@@ -1,0 +1,24 @@
+# Entornos virtuales de Python
+.venv/
+venv/
+env/
+ENV/
+*.venv
+
+# Archivos de caché y compilados de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos del sistema macOS
+.DS_Store
+
+# Archivos de configuración local de VS Code (opcional)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+data/creditos.csv
+data/movimientos.csv
+data/saldos.csv
