@@ -19,6 +19,6 @@ __pycache__/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
-data/creditos.csv
-data/movimientos.csv
-data/saldos.csv
+# Ignorar datos CSV pesados
+data/*.csv
+*.csv
