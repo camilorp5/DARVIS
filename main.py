@@ -20,7 +20,7 @@ con = duckdb.connect(database=':memory:')
 def setup_database():
     tables = ["clientes", "creditos", "saldos", "movimientos"]
     for table in tables:
-        parquet_file = f"data/{table}.parquet" if os.path.exists(f"data/{table}.parquet") else f"{table}.parquet"
+        parquet_file = f"data/processed/{table}.parquet" if os.path.exists(f"data/processed/{table}.parquet") else f"{table}.parquet"
         if os.path.exists(parquet_file):
             print(f"✅ Cargando tabla '{table}' desde '{parquet_file}'...")
             con.execute(f"CREATE TABLE IF NOT EXISTS {table} AS SELECT * FROM '{parquet_file}';")

@@ -22,6 +22,12 @@ def process_clientes():
         "ANTIGUEDAD_MESES", "COMUNA_BARRIO", "CODIGO_DANE"
     ]
 
+    # Condición reutilizable para detectar "Medellín - Antioquia" / "Medellin - Antioquia"
+    is_medellin_antioquia = (
+        pl.col("BARRIO_COMUNA").str.to_uppercase().str.contains(r"^MEDELL[IÍ]N$")
+        & pl.col("MUNICIPIO_DEPTO").str.to_uppercase().str.contains(r"^ANTIOQUIA$")
+    )
+
     q = (
         pl.scan_csv(
             raw_path,
@@ -31,7 +37,10 @@ def process_clientes():
             ignore_errors=True,
             truncate_ragged_lines=True,
         )
-        # Separación defensiva de BARRIO y MUNICIPIO
+        # 1. Normalización de espacios no separables (\xa0) y separación por guion (-)
+        .with_columns(
+            pl.col("COMUNA_BARRIO").str.replace_all(r"\xa0", " ").str.strip_chars()
+        )
         .with_columns([
             pl.col("COMUNA_BARRIO")
             .str.split("-")
@@ -45,16 +54,28 @@ def process_clientes():
             .str.strip_chars()
             .alias("MUNICIPIO_DEPTO"),
         ])
-        # Filtrado de Bogotá DC
+        # 2. Regla de reasignación para "Medellín / Medellin - Antioquia"
+        .with_columns([
+            pl.when(is_medellin_antioquia)
+            .then(pl.lit("SIN_INFORMACION"))
+            .otherwise(pl.col("BARRIO_COMUNA"))
+            .alias("BARRIO_COMUNA"),
+
+            pl.when(is_medellin_antioquia)
+            .then(pl.lit("Medellín"))
+            .otherwise(pl.col("MUNICIPIO_DEPTO"))
+            .alias("MUNICIPIO_DEPTO"),
+        ])
+        # 3. Filtrado de registros de Bogotá DC
         .filter(
             ~pl.col("MUNICIPIO_DEPTO")
             .fill_null("")
             .str.to_uppercase()
             .str.contains("BOGOTA|BOGOTÁ")
         )
-        # Paso 1.1: Eliminar columnas 100% nulas y columna original parseada
+        # 4. Eliminar columnas 100% nulas y columna original parseada
         .drop(["NUMERO_HIJOS", "CODIGO_DANE", "COMUNA_BARRIO"])
-        # Paso 1.2 & 1.3: Tratamiento de ANTIGUEDAD_MESES y PERSONAS_A_CARGO (Capping a 10)
+        # 5. Casteos de tipo e imputación de categóricas
         .with_columns([
             pl.col("ANTIGUEDAD_MESES").cast(pl.Int64, strict=False),
             pl.col("PERSONAS_A_CARGO").cast(pl.Int64, strict=False),
@@ -64,6 +85,7 @@ def process_clientes():
             pl.col("BARRIO_COMUNA").cast(pl.String).fill_null("SIN_INFORMACION"),
             pl.col("MUNICIPIO_DEPTO").cast(pl.String).fill_null("SIN_INFORMACION"),
         ])
+        # 6. Reglas de negocio para valores numéricos centinelas y fuera de rango
         .with_columns([
             # Antigüedad < 0 pasa a 0; 999 se marca como nulo
             pl.when(pl.col("ANTIGUEDAD_MESES") == 999)
@@ -111,7 +133,6 @@ def process_creditos():
             ignore_errors=True,
             truncate_ragged_lines=True,
         )
-        # Paso 3.1: Estandarizar TASA a porcentaje (TASA * 100)
         .with_columns([
             pl.col("PLAZO").cast(pl.Int64, strict=False),
             (pl.col("TASA").cast(pl.Float64, strict=False) * 100.0).round(4).alias("TASA"),
@@ -151,7 +172,6 @@ def process_saldos():
             ignore_errors=True,
             truncate_ragged_lines=True,
         )
-        # Paso 2.1: DIAS_MORA == 999 -> ES_CASTIGADO = 1 y ajuste de días
         .with_columns([
             pl.col("DIAS_MORA").cast(pl.Int64, strict=False),
             pl.col("SALDO_CAPITAL").cast(pl.Float64, strict=False),
@@ -159,13 +179,11 @@ def process_saldos():
             pl.col("GASTOS_COBRANZA").cast(pl.Float64, strict=False),
         ])
         .with_columns([
-            # Flag categórica de crédito en cobro judicial/castigado
             pl.when(pl.col("DIAS_MORA") == 999)
             .then(1)
             .otherwise(0)
             .alias("ES_CASTIGADO"),
 
-            # Reemplazar DIAS_MORA < 0 por 0, y 999 por NULL para no distorsionar promedios
             pl.when(pl.col("DIAS_MORA") == 999)
             .then(None)
             .when(pl.col("DIAS_MORA") < 0)
@@ -201,7 +219,6 @@ def process_movimientos():
             ignore_errors=True,
             truncate_ragged_lines=True,
         )
-        # Paso 2.2: CUOTA_APLICADA > 240 pasa a NULL
         .with_columns([
             pl.col("CUOTA_APLICADA").cast(pl.Int64, strict=False),
             pl.col("VALOR_CAPITAL").cast(pl.Float64, strict=False),
