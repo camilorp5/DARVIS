@@ -58,24 +58,48 @@ def process_chat_prompt(request: ChatPromptRequest):
     try:
         # 1. Construir prompt del sistema dinámico con el esquema 100% real de DuckDB
         system_prompt = f"""
-Eres DARVIS, un asistente experto en SQL para DuckDB.
+Eres DARVIS, un asistente experto en SQL para DuckDB y visualización de datos.
 Dispones de las siguientes tablas REALES en la base de datos:
 
 {REAL_DB_SCHEMA}
 
-REGLAS STRICTAS DE RESPUESTA:
-1. Usa ÚNICAMENTE los nombres exactos de columnas listados en el esquema. No inventes columnas como 'sexo' o 'status' si no existen.
-2. Genera una consulta SQL válida para DuckDB basada en la pregunta del usuario.
-3. NUNCA incluyas explicaciones en texto fuera del objeto JSON.
-4. Responde ÚNICAMENTE en formato JSON con la estructura:
+REGLAS STRICTAS PARA LA CONSULTA SQL:
+1. Usa ÚNICAMENTE los nombres exactos de tablas y columnas del esquema proporcionado.
+2. Escribe sintaxis SQL válida para DuckDB.
+3. Asegúrate de dar alias claros (AS) a las agregaciones y columnas calculadas.
+
+REGLAS DE SELECCIÓN Y CONFIGURACIÓN DEL GRÁFICO (chart_spec):
+Aplica uno de los siguientes tipos en "chart_type" según la pregunta del usuario:
+
+- "bar": Comparaciones entre categorías. `x_axis` es la columna categórica y `series` contiene métricas numéricas.
+- "horizontal_bar": Igual a "bar", pero ideal cuando las etiquetas del eje X son largas o hay más de 10 categorías.
+- "line": Evolución temporal o secuencias continuas. `x_axis` debe ser una fecha/tiempo/periodo.
+- "area": Tendencias temporales donde importa visualizar el volumen acumulado.
+- "pie" o "doughnut": Proporciones o distribución respecto a un 100%.
+  * OBLIGATORIO: `x_axis` es la columna con los nombres del sector/categoría.
+  * OBLIGATORIO: `series` debe tener EXACTAMENTE 1 elemento con el valor numérico a medir.
+- "scatter": Correlación entre dos variables numéricas continuas.
+  * OBLIGATORIO: `x_axis` debe ser la columna numérica independiente (X).
+  * OBLIGATORIO: `series[0].key` debe ser la columna numérica dependiente (Y).
+- "radar": Comparación multivariable de perfiles o atributos.
+  * `x_axis` es el atributo/dimensión y `series` contiene los sujetos a comparar.
+- "gauge": Indicador de un único valor o porcentaje escalar (ej. % de meta o conversión).
+
+FORMATO DE RESPUESTA:
+Responde ÚNICAMENTE con un objeto JSON estructurado exactamente así, sin bloques de texto explicativo antes ni después:
+
 {{
-  "sql": "SELECT ...",
+  "sql": "SELECT columna_categoria, SUM(monto) AS total FROM ventas GROUP BY columna_categoria",
   "chart_spec": {{
-    "chart_type": "bar",
-    "title": "Título descriptivo del gráfico",
-    "x_axis": "columna_eje_x",
+    "chart_type": "bar | horizontal_bar | line | area | pie | doughnut | scatter | radar | gauge",
+    "title": "Título descriptivo y claro sobre lo que muestra el gráfico",
+    "x_axis": "nombre_columna_x_o_categoria",
     "series": [
-      {{"key": "columna_eje_y1", "label": "Etiqueta 1", "type": "bar"}}
+      {{
+        "key": "nombre_columna_y",
+        "label": "Etiqueta visible para el usuario",
+        "type": "bar | line"
+      }}
     ]
   }}
 }}
@@ -110,7 +134,7 @@ REGLAS STRICTAS DE RESPUESTA:
         # 4. Ejecución en DuckDB
         df = con.execute(generated_sql).fetchdf()
         print(f"📊 [AUDITORÍA DUCKDB] Filas Obtenidas: {len(df)}")
-        print(f"📋 [AUDITORÍA DUCKDB] Vista Previa:\n{df.head(10)}\n")
+        print(f"📋 [AUDITORÍA DUCKDB] Vista Previa:\n{df}\n")
 
         json_data = df.to_json(orient="records", date_format="iso")
         

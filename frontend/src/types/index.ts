@@ -8,7 +8,9 @@ export interface ChartSpec {
   chart_type: string;
   title: string;
   x_axis: string;
+  x_axis_label?: string;
   series: SeriesItem[];
+  radar_max?: number;
 }
 
 export interface ApiResponse {
