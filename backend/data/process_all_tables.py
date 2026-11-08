@@ -2,10 +2,14 @@ import logging
 from pathlib import Path
 import polars as pl
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
+
 
 # ==============================================================================
 # 1. CLIENTES.CSV
@@ -32,7 +36,7 @@ def process_clientes():
         pl.scan_csv(
             raw_path,
             separator=";",
-            has_header=False,
+            has_header=True,
             new_columns=columns,
             ignore_errors=True,
             truncate_ragged_lines=True,
@@ -128,7 +132,7 @@ def process_creditos():
         pl.scan_csv(
             raw_path,
             separator=";",
-            has_header=False,
+            has_header=True,
             new_columns=columns,
             ignore_errors=True,
             truncate_ragged_lines=True,
@@ -167,7 +171,7 @@ def process_saldos():
         pl.scan_csv(
             raw_path,
             separator=";",
-            has_header=False,
+            has_header=True,
             new_columns=columns,
             ignore_errors=True,
             truncate_ragged_lines=True,
@@ -214,7 +218,7 @@ def process_movimientos():
         pl.scan_csv(
             raw_path,
             separator=";",
-            has_header=False,
+            has_header=True,
             new_columns=columns,
             ignore_errors=True,
             truncate_ragged_lines=True,

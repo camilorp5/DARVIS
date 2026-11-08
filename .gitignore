@@ -24,3 +24,6 @@ data/*.csv
 *.csv
 
 node_modules/
+.next/
+backend/__pycache__/
+backend/.env
