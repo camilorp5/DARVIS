@@ -27,3 +27,6 @@ node_modules/
 .next/
 backend/__pycache__/
 backend/.env
+# Generados
+frontend/AGENTS.md
+integracion_datos/salida/checksums_v*.txt

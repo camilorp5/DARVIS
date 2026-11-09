@@ -11,6 +11,9 @@ export interface ChartSpec {
   x_axis_label?: string;
   series: SeriesItem[];
   radar_max?: number;
+  size_key?: string;
+  size_label?: string;
+  label_key?: string;
 }
 
 export interface ApiResponse {

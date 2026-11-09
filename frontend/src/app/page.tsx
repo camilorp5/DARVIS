@@ -1,7 +1,7 @@
 'use client';
 
 import { PointerEvent, useState } from 'react';
-import { sendChatPrompt } from '@/lib/api';
+import { getCasoGuia, sendChatPrompt } from '@/lib/api';
 import { ApiResponse } from '@/types';
 import DynamicChart from '@/components/visualization/DynamicChart';
 import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-react';
@@ -39,7 +39,7 @@ const CHART_TYPES = [
 ] as const;
 
 export default function Home() {
-  const [userPrompt, setUserPrompt] = useState('Muestra el total de hombres y mujeres por rango de edad');
+  const [userPrompt, setUserPrompt] = useState('Muestra la cobertura de clientes por comuna, de mayor a menor');
   const [charts, setCharts] = useState<DashboardChart[]>([]);
   const [selectedChartId, setSelectedChartId] = useState<string | null>(null);
   const [pointerInteraction, setPointerInteraction] = useState<PointerInteraction | null>(null);
@@ -49,13 +49,12 @@ export default function Home() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const selectedChart = charts.find((chart) => chart.id === selectedChartId) ?? null;
 
-  const handleSendPrompt = async () => {
-    if (!userPrompt.trim()) return;
+  const loadChart = async (request: () => Promise<ApiResponse>) => {
     setIsLoading(true);
     setErrorMessage(null);
 
     try {
-      const data = await sendChatPrompt(userPrompt);
+      const data = await request();
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setCharts((current) => {
         const index = current.length;
@@ -75,6 +74,11 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSendPrompt = () => {
+    if (!userPrompt.trim()) return;
+    void loadChart(() => sendChatPrompt(userPrompt));
   };
 
   const startInteraction = (
@@ -288,6 +292,14 @@ export default function Home() {
           >
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             <span className="hidden sm:inline">Consultar</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void loadChart(getCasoGuia)}
+            disabled={isLoading}
+            className={`shrink-0 rounded-xl border px-4 py-3.5 text-sm font-medium transition-colors disabled:opacity-50 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            Caso guía
           </button>
         </div>
       </footer>

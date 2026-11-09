@@ -22,6 +22,17 @@ export async function executeSqlQuery(sql: string, chartSpec?: ChartSpec): Promi
   return response.json();
 }
 
+export async function getCasoGuia(): Promise<ApiResponse> {
+  const response = await fetch(`${API_BASE_URL}/caso-guia`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: 'Error de conexión con el backend' }));
+    throw new Error(errorData.detail || `Error HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function sendChatPrompt(prompt: string): Promise<ApiResponse> {
   const response = await fetch(`${API_BASE_URL}/chat`, {
     method: 'POST',

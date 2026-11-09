@@ -84,22 +84,37 @@ export default function DynamicChart({
     // --- CASO 2: Gráfico de Dispersión (Scatterplot) ---
     if (chartType === 'scatter') {
       const primarySeries = chart_spec.series[0];
+      const sizeKey = chart_spec.size_key;
+      const labelKey = chart_spec.label_key;
+      const maxSize = sizeKey ? Math.max(0, ...cleanData.map((item) => Number(item[sizeKey]) || 0)) : 0;
       const scatterData = cleanData.map((item) => [
         item[chart_spec.x_axis],
         item[primarySeries.key],
+        sizeKey ? item[sizeKey] : null,
+        labelKey ? item[labelKey] : null,
       ]);
 
       return {
         textStyle: { color: textColor },
-        tooltip: { trigger: 'item', formatter: (params: any) => `${xAxisLabel}: ${params.value[0]}<br/>${primarySeries.label}: ${params.value[1]}` },
+        tooltip: {
+          trigger: 'item',
+          formatter: (params: any) => [
+            params.value[3],
+            `${xAxisLabel}: ${params.value[0]}`,
+            `${primarySeries.label}: ${params.value[1]}`,
+            sizeKey ? `${chart_spec.size_label || sizeKey}: ${params.value[2]}` : null,
+          ].filter(Boolean).join('<br/>'),
+        },
         grid: { top: '15%', left: '3%', right: '4%', bottom: '15%', containLabel: true },
         xAxis: { type: 'value', name: xAxisLabel, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, axisLine: { lineStyle: { color: axisColor } } },
-        yAxis: { type: 'value', name: primarySeries.label, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, splitLine: { lineStyle: { color: splitColor } } },
+        yAxis: { type: 'value', scale: Boolean(sizeKey), name: primarySeries.label, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, splitLine: { lineStyle: { color: splitColor } } },
         series: [
           {
             name: primarySeries.label,
             type: 'scatter',
-            symbolSize: 10,
+            // El área del punto es proporcional al valor; sin size_key se mantiene el tamaño actual.
+            symbolSize: sizeKey && maxSize > 0 ? (value: any[]) => Math.max(6, 40 * Math.sqrt(Number(value[2]) / maxSize)) : 10,
+            label: { show: Boolean(labelKey), formatter: (p: any) => p.value[3], position: 'top', color: textColor },
             itemStyle: { color: PALETTE[0] },
             data: scatterData,
           },
