@@ -9,6 +9,11 @@ export interface ChartSpec {
   title: string;
   x_axis: string;
   x_axis_label?: string;
+  y_axis_label?: string;
+  x_axis_min?: number;
+  x_axis_max?: number;
+  y_axis_min?: number;
+  y_axis_max?: number;
   series: SeriesItem[];
   radar_max?: number;
   size_key?: string;

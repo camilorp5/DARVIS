@@ -67,6 +67,15 @@ ADVERTENCIAS OBLIGATORIAS:
 - "Cartera de créditos", "Microcréditos, garantía idónea", "Microcréditos, otras garantías": saldos en la unidad de la fuente.
 - "Número de oficinas": oficinas; oficinas_por_100000_hab: oficinas por 100.000 habitantes con población de 2020.
 - Esas cuatro columnas tienen espacios o comas: escríbelas siempre entre comillas dobles en el SQL.""",
+    "indice_multidimensional_calidad_vida": """Descripción de 'indice_multidimensional_calidad_vida':
+- varcharidcomunafk: identificador de comuna (debe coincidir con base_integrada_comuna).
+- intaño: año de medición (usar MAX(intaño) para el año más reciente).
+- decimcv: índice global multidimensional de calidad de vida.
+- decvulnerabilida: índice específico de vulnerabilidad (OJO: se escribe exactamente 'decvulnerabilida', NUNCA 'decv' ni 'decvulnerabilidad').
+- decsalud: dimensión de salud.
+- dectrabajo: dimensión de trabajo.
+- decingresos: dimensión de ingresos.
+- decpercepcioncalidadvida: percepción subjetiva de calidad de vida."""
 }
 
 @app.on_event("startup")
@@ -162,6 +171,7 @@ REGLAS STRICTAS PARA LA CONSULTA SQL:
 1. Usa ÚNICAMENTE los nombres exactos de tablas y columnas del esquema proporcionado.
 2. Escribe sintaxis SQL válida para DuckDB.
 3. Asegúrate de dar alias claros (AS) a las agregaciones y columnas calculadas.
+4. Si no encuentras una tabla o columna, responde con un error claro en lugar de inventar nombres.
 
 REGLAS DE SELECCIÓN Y CONFIGURACIÓN DEL GRÁFICO (chart_spec):
 Aplica uno de los siguientes tipos en "chart_type" según la pregunta del usuario:

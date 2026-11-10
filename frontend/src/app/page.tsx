@@ -48,6 +48,9 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const selectedChart = charts.find((chart) => chart.id === selectedChartId) ?? null;
+  const selectedChartType = selectedChart?.response.chart_spec.chart_type;
+  const canSetXBounds = selectedChartType === 'scatter' || selectedChartType === 'horizontal_bar';
+  const canSetYBounds = selectedChartType === 'scatter' || ['bar', 'line', 'area'].includes(selectedChartType ?? '');
 
   const loadChart = async (request: () => Promise<ApiResponse>) => {
     setIsLoading(true);
@@ -131,6 +134,13 @@ export default function Home() {
       : chart));
   };
 
+  const updateAxisLimit = (axis: 'x' | 'y', edge: 'min' | 'max', value: string) => {
+    updateSelectedChart((spec) => {
+      const field = `${axis}_axis_${edge}` as 'x_axis_min' | 'x_axis_max' | 'y_axis_min' | 'y_axis_max';
+      return { ...spec, [field]: value === '' ? undefined : Number(value) };
+    });
+  };
+
   const deleteChart = (id: string) => {
     const remaining = charts.filter((chart) => chart.id !== id);
     setCharts(remaining);
@@ -147,23 +157,23 @@ export default function Home() {
           <button
             type="button"
             onClick={() => setIsDarkMode((dark) => !dark)}
-            className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
             aria-label={isDarkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
             title={isDarkMode ? 'Modo claro' : 'Modo oscuro'}
           >
-            {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            {isDarkMode ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             <span className="hidden sm:inline">{isDarkMode ? 'Claro' : 'Oscuro'}</span>
           </button>
           <button
             type="button"
             onClick={() => setIsSettingsOpen((open) => !open)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            className={`flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
             aria-expanded={isSettingsOpen}
             aria-label={isSettingsOpen ? 'Cerrar configuraciones' : 'Abrir configuraciones'}
           >
-            <Settings2 className="h-4 w-4" />
+            <Settings2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Configuración</span>
-            {isSettingsOpen ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {isSettingsOpen ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
           </button>
         </div>
       </header>
@@ -202,6 +212,7 @@ export default function Home() {
                 <DynamicChart
                   response={chart.response}
                   isDark={isDarkMode}
+                  compact={chart.width < 500 || chart.height < 400}
                   onTitlePointerDown={(event) => startInteraction(event, chart, 'move')}
                   onTitlePointerMove={continueInteraction}
                   onTitlePointerUp={() => setPointerInteraction(null)}
@@ -221,41 +232,89 @@ export default function Home() {
         </section>
 
         {isSettingsOpen && (
-          <aside className={`w-80 max-w-[85vw] shrink-0 overflow-y-auto border-l p-5 ${isDarkMode ? 'border-slate-800 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
-            <div className={`mb-5 flex items-center gap-2 border-b pb-4 ${isDarkMode ? 'border-slate-800 text-slate-100' : 'border-slate-100 text-slate-800'}`}>
-              <Settings2 className={`h-4 w-4 ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`} />
-              <h2 className="text-sm font-semibold">Configuración del gráfico</h2>
+          <aside className={`w-72 max-w-[85vw] shrink-0 overflow-y-auto border-l p-3 ${isDarkMode ? 'border-slate-800 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
+            <div className={`mb-3 flex items-center gap-1.5 border-b pb-2.5 ${isDarkMode ? 'border-slate-800 text-slate-100' : 'border-slate-100 text-slate-800'}`}>
+              <Settings2 className={`h-3.5 w-3.5 ${isDarkMode ? 'text-blue-300' : 'text-blue-600'}`} />
+              <h2 className="text-xs font-semibold">Configuración del gráfico</h2>
             </div>
             {selectedChart ? (
-              <div className="space-y-4">
-                <label className={`block space-y-1.5 text-xs font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+              <div className="space-y-2.5">
+                <label className={`block space-y-1 text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                   Título
                   <input
                     value={selectedChart.response.chart_spec.title}
                     onChange={(event) => updateSelectedChart((spec) => ({ ...spec, title: event.target.value }))}
-                    className={`w-full rounded-lg border p-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                    className={`w-full rounded-md border p-2 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
                   />
                 </label>
-                <label className={`block space-y-1.5 text-xs font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                <label className={`block space-y-1 text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                   Etiqueta del eje X
                   <input
                     value={selectedChart.response.chart_spec.x_axis_label ?? selectedChart.response.chart_spec.x_axis}
                     onChange={(event) => updateSelectedChart((spec) => ({ ...spec, x_axis_label: event.target.value }))}
-                    className={`w-full rounded-lg border p-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                    className={`w-full rounded-md border p-2 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
                   />
                 </label>
-                <label className={`block space-y-1.5 text-xs font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                <label className={`block space-y-1 text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Etiqueta del eje Y
+                  <input
+                    value={selectedChart.response.chart_spec.y_axis_label ?? selectedChart.response.chart_spec.series[0]?.label ?? ''}
+                    onChange={(event) => updateSelectedChart((spec) => ({ ...spec, y_axis_label: event.target.value }))}
+                    className={`w-full rounded-md border p-2 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                  />
+                </label>
+                {(canSetXBounds || canSetYBounds) && (
+                  <div className={`space-y-2 rounded-lg border p-2 ${isDarkMode ? 'border-slate-700 bg-slate-900/40' : 'border-slate-200 bg-slate-50'}`}>
+                    <div>
+                      <h3 className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-700'}`}>Rango de los ejes</h3>
+                      <p className={`mt-0.5 text-[10px] leading-3.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                        Los límites se aplican solo a ejes numéricos. Déjalos vacíos para usar el rango automático.
+                      </p>
+                    </div>
+                    {canSetXBounds && (
+                      <div className="space-y-2">
+                        <p className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Eje X</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className={`space-y-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Inicio
+                            <input type="number" value={selectedChart.response.chart_spec.x_axis_min ?? ''} onChange={(event) => updateAxisLimit('x', 'min', event.target.value)} placeholder="Auto" className={`w-full rounded border p-1.5 text-xs ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`} />
+                          </label>
+                          <label className={`space-y-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Fin
+                            <input type="number" value={selectedChart.response.chart_spec.x_axis_max ?? ''} onChange={(event) => updateAxisLimit('x', 'max', event.target.value)} placeholder="Auto" className={`w-full rounded border p-1.5 text-xs ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`} />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    {canSetYBounds && (
+                      <div className="space-y-2">
+                        <p className={`text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>Eje Y</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className={`space-y-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Inicio
+                            <input type="number" value={selectedChart.response.chart_spec.y_axis_min ?? ''} onChange={(event) => updateAxisLimit('y', 'min', event.target.value)} placeholder="Auto" className={`w-full rounded border p-1.5 text-xs ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`} />
+                          </label>
+                          <label className={`space-y-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                            Fin
+                            <input type="number" value={selectedChart.response.chart_spec.y_axis_max ?? ''} onChange={(event) => updateAxisLimit('y', 'max', event.target.value)} placeholder="Auto" className={`w-full rounded border p-1.5 text-xs ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`} />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <label className={`block space-y-1 text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                   Tipo de gráfico
                   <select
                     value={selectedChart.response.chart_spec.chart_type}
                     onChange={(event) => updateSelectedChart((spec) => ({ ...spec, chart_type: event.target.value }))}
-                    className={`w-full rounded-lg border p-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                    className={`w-full rounded-md border p-2 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
                   >
                     {CHART_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
                 {selectedChart.response.chart_spec.series.map((series, index) => (
-                  <label key={`${series.key}-${index}`} className={`block space-y-1.5 text-xs font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
+                  <label key={`${series.key}-${index}`} className={`block space-y-1 text-[11px] font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`}>
                     Etiqueta de serie: {series.key}
                     <input
                       value={series.label}
@@ -263,7 +322,7 @@ export default function Home() {
                         ...spec,
                         series: spec.series.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item),
                       }))}
-                      className={`w-full rounded-lg border p-2.5 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
+                      className={`w-full rounded-md border p-2 text-xs font-normal focus:outline-none focus:ring-2 focus:ring-blue-500 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-100' : 'border-slate-200 bg-slate-50 text-slate-800'}`}
                     />
                   </label>
                 ))}

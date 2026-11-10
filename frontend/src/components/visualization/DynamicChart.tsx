@@ -18,6 +18,7 @@ export type ChartType =
 interface DynamicChartProps {
   response: ApiResponse;
   isDark?: boolean;
+  compact?: boolean;
   onTitlePointerDown?: (event: PointerEvent<HTMLElement>) => void;
   onTitlePointerMove?: (event: PointerEvent<HTMLElement>) => void;
   onTitlePointerUp?: () => void;
@@ -31,6 +32,7 @@ const PALETTE = [
 export default function DynamicChart({
   response,
   isDark = false,
+  compact = false,
   onTitlePointerDown,
   onTitlePointerMove,
   onTitlePointerUp,
@@ -44,6 +46,12 @@ export default function DynamicChart({
     const splitColor = isDark ? '#263449' : '#f1f5f9';
     const tooltipBackground = isDark ? '#111827' : '#ffffff';
     const tooltipBorder = isDark ? '#334155' : '#e2e8f0';
+    const tooltipOutsideChart = {
+      appendTo: 'body' as const,
+      confine: false,
+      extraCssText: 'z-index: 99999; max-width: min(320px, 85vw); white-space: normal; overflow-wrap: anywhere;',
+      textStyle: { color: textColor, fontSize: compact ? 10 : 12 },
+    };
     // 1. Filtrado defensivo de filas de encabezado
     const cleanData = data.filter(
       (item) => String(item[chart_spec.x_axis]).toUpperCase() !== chart_spec.x_axis.toUpperCase()
@@ -52,6 +60,12 @@ export default function DynamicChart({
     const categories = cleanData.map((item) => String(item[chart_spec.x_axis] ?? 'S/I'));
     const chartType = chart_spec.chart_type as ChartType;
     const xAxisLabel = chart_spec.x_axis_label || chart_spec.x_axis;
+    const yAxisLabel = chart_spec.y_axis_label || chart_spec.series[0]?.label || '';
+    const axisFontSize = compact ? 9 : 11;
+    const categoryInterval = compact ? 'auto' as const : 0;
+    const axisNameGap = compact ? 24 : 34;
+    const hasLongCategory = categories.some((category) => category.length > 8);
+    const formatCategory = (value: string) => value.length > 18 ? `${value.slice(0, 17)}…` : value;
 
     // --- CASO 1: Gráficos Circulares (Pie / Dona) ---
     if (chartType === 'pie' || chartType === 'doughnut') {
@@ -63,8 +77,8 @@ export default function DynamicChart({
 
       return {
         textStyle: { color: textColor },
-        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-        legend: { bottom: 0, textStyle: { color: textColor, fontWeight: '500' } },
+        tooltip: { ...tooltipOutsideChart, trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+        legend: { bottom: 0, textStyle: { color: textColor, fontWeight: '500', fontSize: axisFontSize } },
         color: PALETTE,
         series: [
           {
@@ -74,7 +88,7 @@ export default function DynamicChart({
             center: ['50%', '45%'],
             avoidLabelOverlap: true,
             itemStyle: { borderRadius: 6, borderColor: isDark ? '#111827' : '#fff', borderWidth: 2 },
-            label: { show: true, formatter: '{b}: {d}%' },
+            label: { show: true, fontSize: axisFontSize, formatter: compact ? '{d}%' : '{b}: {d}%' },
             data: pieData,
           },
         ],
@@ -97,6 +111,7 @@ export default function DynamicChart({
       return {
         textStyle: { color: textColor },
         tooltip: {
+          ...tooltipOutsideChart,
           trigger: 'item',
           formatter: (params: any) => [
             params.value[3],
@@ -105,16 +120,28 @@ export default function DynamicChart({
             sizeKey ? `${chart_spec.size_label || sizeKey}: ${params.value[2]}` : null,
           ].filter(Boolean).join('<br/>'),
         },
-        grid: { top: '15%', left: '3%', right: '4%', bottom: '15%', containLabel: true },
-        xAxis: { type: 'value', name: xAxisLabel, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, axisLine: { lineStyle: { color: axisColor } } },
-        yAxis: { type: 'value', scale: Boolean(sizeKey), name: primarySeries.label, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, splitLine: { lineStyle: { color: splitColor } } },
+        grid: { top: compact ? '12%' : '15%', left: compact ? '14%' : '16%', right: '5%', bottom: compact ? '20%' : '18%', containLabel: true },
+        xAxis: {
+          type: 'value', min: chart_spec.x_axis_min, max: chart_spec.x_axis_max,
+          name: xAxisLabel, nameLocation: 'middle', nameGap: axisNameGap,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
+          axisLabel: { color: mutedColor, fontSize: axisFontSize },
+          axisLine: { lineStyle: { color: axisColor } },
+        },
+        yAxis: {
+          type: 'value', min: chart_spec.y_axis_min, max: chart_spec.y_axis_max, scale: Boolean(sizeKey),
+          name: chart_spec.y_axis_label || primarySeries.label, nameLocation: 'middle', nameRotate: 90, nameGap: compact ? 32 : 42,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
+          axisLabel: { color: mutedColor, fontSize: axisFontSize },
+          splitLine: { lineStyle: { color: splitColor } },
+        },
         series: [
           {
             name: primarySeries.label,
             type: 'scatter',
             // El área del punto es proporcional al valor; sin size_key se mantiene el tamaño actual.
             symbolSize: sizeKey && maxSize > 0 ? (value: any[]) => Math.max(6, 40 * Math.sqrt(Number(value[2]) / maxSize)) : 10,
-            label: { show: Boolean(labelKey), formatter: (p: any) => p.value[3], position: 'top', color: textColor },
+            label: { show: Boolean(labelKey) && !compact, formatter: (p: any) => p.value[3], position: 'top', color: textColor, fontSize: axisFontSize },
             itemStyle: { color: PALETTE[0] },
             data: scatterData,
           },
@@ -134,8 +161,8 @@ export default function DynamicChart({
 
       return {
         textStyle: { color: textColor },
-        tooltip: { trigger: 'item' },
-        legend: { bottom: 0, textStyle: { color: textColor } },
+        tooltip: { ...tooltipOutsideChart, trigger: 'item' },
+        legend: { bottom: 0, textStyle: { color: textColor, fontSize: axisFontSize } },
         radar: { indicator, radius: '60%' },
         color: PALETTE,
         series: [{ type: 'radar', data: seriesData }],
@@ -149,7 +176,7 @@ export default function DynamicChart({
 
       return {
         textStyle: { color: textColor },
-        tooltip: { formatter: '{a} <br/>{b} : {c}%' },
+        tooltip: { ...tooltipOutsideChart, formatter: '{a} <br/>{b} : {c}%' },
         series: [
           {
             name: primarySeries.label,
@@ -166,11 +193,31 @@ export default function DynamicChart({
     if (chartType === 'horizontal_bar') {
       return {
         textStyle: { color: textColor },
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-        legend: { bottom: 0, textStyle: { color: textColor } },
-        grid: { top: '15%', left: '3%', right: '4%', bottom: '15%', containLabel: true },
-        xAxis: { type: 'value', name: xAxisLabel, nameTextStyle: { color: textColor }, axisLabel: { color: mutedColor }, splitLine: { lineStyle: { color: splitColor } } },
-        yAxis: { type: 'category', data: categories, name: xAxisLabel, axisLabel: { color: mutedColor }, axisLine: { lineStyle: { color: axisColor } } },
+        tooltip: { ...tooltipOutsideChart, trigger: 'axis', axisPointer: { type: 'shadow' } },
+        legend: { bottom: 0, textStyle: { color: textColor, fontSize: axisFontSize } },
+        grid: { top: compact ? '12%' : '15%', left: compact ? '15%' : '17%', right: '5%', bottom: compact ? '20%' : '18%', containLabel: true },
+        xAxis: {
+          type: 'value', min: chart_spec.x_axis_min, max: chart_spec.x_axis_max,
+          name: yAxisLabel, nameLocation: 'middle', nameGap: axisNameGap,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
+          axisLabel: { color: mutedColor, fontSize: axisFontSize },
+          splitLine: { lineStyle: { color: splitColor } },
+        },
+        yAxis: {
+          type: 'category', data: categories,
+          name: xAxisLabel, nameLocation: 'middle', nameRotate: 90, nameGap: compact ? 34 : 44,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
+          axisLabel: {
+            color: mutedColor,
+            fontSize: axisFontSize,
+            interval: categoryInterval,
+            hideOverlap: true,
+            overflow: 'truncate',
+            width: compact ? 66 : 110,
+            formatter: formatCategory,
+          },
+          axisLine: { lineStyle: { color: axisColor } },
+        },
         series: chart_spec.series.map((s, idx) => ({
           name: s.label,
           type: 'bar',
@@ -186,30 +233,51 @@ export default function DynamicChart({
     return {
       textStyle: { color: textColor },
       tooltip: {
+        ...tooltipOutsideChart,
         trigger: 'axis',
         backgroundColor: tooltipBackground,
         borderColor: tooltipBorder,
         borderWidth: 1,
-        textStyle: { color: textColor },
+        textStyle: { color: textColor, fontSize: compact ? 10 : 12 },
         axisPointer: { type: chartType === 'line' || chartType === 'area' ? 'line' : 'shadow' },
       },
-      legend: { bottom: 0, textStyle: { color: textColor, fontWeight: '500' } },
-      grid: { top: '15%', left: '3%', right: '4%', bottom: '15%', containLabel: true },
+      legend: { bottom: 0, textStyle: { color: textColor, fontWeight: '500', fontSize: axisFontSize } },
+      grid: { top: compact ? '12%' : '15%', left: compact ? '13%' : '15%', right: '5%', bottom: compact ? '20%' : '18%', containLabel: true },
       xAxis: [
         {
           type: isTimeSeries ? 'category' : 'category',
           data: categories,
           name: xAxisLabel,
-          nameTextStyle: { color: textColor },
+          nameLocation: 'middle',
+          nameGap: axisNameGap,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
           axisLine: { lineStyle: { color: axisColor } },
-          axisLabel: { color: mutedColor, fontWeight: '500', rotate: categories.length > 8 ? 30 : 0 },
+          axisLabel: {
+            color: mutedColor,
+            fontWeight: '500',
+            fontSize: axisFontSize,
+            interval: categoryInterval,
+            hideOverlap: true,
+            rotate: hasLongCategory ? 40 : (!compact && categories.length > 8 ? 30 : 0),
+            align: hasLongCategory ? 'right' : 'center',
+            overflow: 'truncate',
+            width: compact ? 72 : 125,
+            formatter: formatCategory,
+          },
         },
       ],
       yAxis: [
         {
           type: 'value',
+          min: chart_spec.y_axis_min,
+          max: chart_spec.y_axis_max,
+          name: yAxisLabel,
+          nameLocation: 'middle',
+          nameRotate: 90,
+          nameGap: compact ? 32 : 42,
+          nameTextStyle: { color: textColor, fontSize: axisFontSize },
           splitLine: { lineStyle: { color: splitColor } },
-          axisLabel: { color: mutedColor },
+          axisLabel: { color: mutedColor, fontSize: axisFontSize },
         },
       ],
       series: chart_spec.series.map((s, idx) => {
@@ -231,18 +299,18 @@ export default function DynamicChart({
         };
       }),
     };
-  }, [chart_spec, data, isDark]);
+  }, [chart_spec, data, isDark, compact]);
 
   return (
-    <div className={`w-full h-full rounded-2xl border p-5 flex flex-col min-h-0 overflow-hidden ${isDark ? 'bg-[#111827] border-slate-700 shadow-xl shadow-black/20' : 'bg-white border-blue-100 shadow-xl shadow-blue-500/5'}`}>
-      <div className={`pb-3 mb-3 border-b ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+    <div className={`w-full h-full rounded-2xl border flex flex-col min-h-0 overflow-hidden ${compact ? 'p-3' : 'p-5'} ${isDark ? 'bg-[#111827] border-slate-700 shadow-xl shadow-black/20' : 'bg-white border-blue-100 shadow-xl shadow-blue-500/5'}`}>
+      <div className={`${compact ? 'pb-1.5 mb-1.5' : 'pb-3 mb-3'} border-b ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
         <div>
           <h3
             onPointerDown={onTitlePointerDown}
             onPointerMove={onTitlePointerMove}
             onPointerUp={onTitlePointerUp}
             onPointerCancel={onTitlePointerUp}
-            className={`w-fit max-w-[calc(100%-2rem)] touch-none select-none cursor-move text-base font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}
+            className={`w-fit max-w-[calc(100%-2rem)] truncate touch-none select-none cursor-move font-semibold ${compact ? 'text-sm' : 'text-base'} ${isDark ? 'text-slate-100' : 'text-slate-800'}`}
             title="Mantén pulsado y arrastra para mover"
           >
             {chart_spec.title}
