@@ -1,19 +1,23 @@
 'use client';
 
-import { PointerEvent, useState } from 'react';
-import { getCasoGuia, sendChatPrompt } from '@/lib/api';
-import { ApiResponse } from '@/types';
+import { PointerEvent, useEffect, useRef, useState } from 'react';
+import { conReintentos, crearLimitador, getCasoGuiaPanel, getCasoGuiaResumen, sendChatPrompt } from '@/lib/api';
+import { ApiResponse, Indicador } from '@/types';
 import DynamicChart from '@/components/visualization/DynamicChart';
-import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-react';
-
-type DashboardChart = {
-  id: string;
-  response: ApiResponse;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
+import DetallesTarjeta from '@/components/caso-guia/DetallesTarjeta';
+import {
+  ALTO_MINIMO,
+  ANCHO_MINIMO,
+  MARGEN,
+  SEPARACION,
+  acomodarTarjetas,
+  alternarMaximizacion,
+  alternarMinimizacion,
+  ordenarTarjetas,
+  restaurar,
+  type DashboardChart,
+} from '@/components/lienzo/tarjetas';
+import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon, X, Minus, Maximize2, Minimize2, ChevronDown, LayoutGrid } from 'lucide-react';
 
 type PointerInteraction = {
   id: string;
@@ -36,7 +40,117 @@ const CHART_TYPES = [
   ['scatter', 'Dispersión'],
   ['radar', 'Radar'],
   ['gauge', 'Velocímetro'],
+  ['interval', 'Intervalo'],
 ] as const;
+
+// Paneles fijos del caso guía, en el orden en que se agregan al lienzo (ids de GET /caso-guia/{id}).
+const PANELES_CASO_GUIA = ['embudo', 'dispersion', 'intervalo', 'brecha', 'robustez'] as const;
+
+// Nombre de cada panel en los avisos de error.
+const NOMBRE_PANEL: Record<string, string> = {
+  embudo: 'embudo de selección',
+  dispersion: 'cobertura frente a hacinamiento',
+  intervalo: 'intervalo de la razón O/E',
+  brecha: 'brecha de clientes',
+  robustez: 'robustez con el IMCV',
+};
+
+// Alto inicial de las tarjetas del caso guía. Para los indicadores se pidieron unos 260 px; se usa 320,
+// el mínimo de redimensión. El intervalo es más alto porque lleva una fila por comuna.
+const ALTO_INDICADORES = ALTO_MINIMO;
+const ALTO_GRAFICO = 420;
+const ALTO_INTERVALO = 560;
+// Con menos alto que este, la lectura se oculta para no recortar el gráfico.
+const ALTO_PARA_LECTURA = 380;
+const MARGEN_MAXIMIZADA = 12;
+// Al cargar el caso guía: máximo de peticiones a la vez (cada una reintenta hasta 2 veces, ver conReintentos).
+const PETICIONES_SIMULTANEAS_CASO_GUIA = 2;
+const TITULO_INDICADORES = 'Resultados del caso guía';
+
+const mensajeDeError = (error: unknown) =>
+  (error instanceof Error && error.message) || 'Error al comunicarse con el backend de DARVIS';
+
+const claseBotonTarjeta = (isDark: boolean) =>
+  `flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isDark ? 'border-slate-700 bg-slate-900/95 text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white/95 text-slate-600 hover:bg-slate-50'}`;
+
+const claseBotonTexto = (isDark: boolean) =>
+  `rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${isDark ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`;
+
+function GrillaIndicadores({ kpis, isDark }: { kpis: Indicador[]; isDark: boolean }) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {kpis.map((kpi) => (
+        <div key={kpi.id} className={`min-w-0 rounded-xl border p-3 ${isDark ? 'border-slate-700 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
+          <p className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{kpi.titulo}</p>
+          <p className={`mt-1 text-2xl font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{kpi.valor}</p>
+          <p className={`mt-1 break-words text-xs leading-5 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{kpi.detalle}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+type ArrastreTitulo = {
+  onTitlePointerDown?: (event: PointerEvent<HTMLElement>) => void;
+  onTitlePointerMove?: (event: PointerEvent<HTMLElement>) => void;
+  onTitlePointerUp?: () => void;
+};
+
+// Tarjeta minimizada: solo la barra del título, que sigue siendo el asa para arrastrar.
+function BarraMinimizada({ titulo, isDark, onTitlePointerDown, onTitlePointerMove, onTitlePointerUp }: { titulo: string; isDark: boolean } & ArrastreTitulo) {
+  return (
+    <div className={`flex h-full items-center rounded-2xl border pl-4 pr-28 ${isDark ? 'bg-[#111827] border-slate-700' : 'bg-white border-blue-100'}`}>
+      <h3
+        onPointerDown={onTitlePointerDown}
+        onPointerMove={onTitlePointerMove}
+        onPointerUp={onTitlePointerUp}
+        onPointerCancel={onTitlePointerUp}
+        className={`truncate touch-none select-none cursor-move text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}
+        title="Mantén pulsado y arrastra para mover"
+      >
+        {titulo}
+      </h3>
+    </div>
+  );
+}
+
+type TarjetaIndicadoresProps = {
+  response: ApiResponse;
+  isDark: boolean;
+  onTitlePointerDown?: (event: PointerEvent<HTMLElement>) => void;
+  onTitlePointerMove?: (event: PointerEvent<HTMLElement>) => void;
+  onTitlePointerUp?: () => void;
+};
+
+// Respuesta del chat con chart_type "indicadores" (ancla del resumen): se dibujan los indicadores en vez de un gráfico.
+function TarjetaIndicadores({ response, isDark, onTitlePointerDown, onTitlePointerMove, onTitlePointerUp }: TarjetaIndicadoresProps) {
+  return (
+    <div className={`w-full h-full rounded-2xl border p-5 flex flex-col min-h-0 overflow-hidden ${isDark ? 'bg-[#111827] border-slate-700' : 'bg-white border-blue-100'}`}>
+      <div className={`pb-3 mb-3 border-b ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+        <h3
+          onPointerDown={onTitlePointerDown}
+          onPointerMove={onTitlePointerMove}
+          onPointerUp={onTitlePointerUp}
+          onPointerCancel={onTitlePointerUp}
+          className={`w-fit max-w-[calc(100%-6.5rem)] truncate touch-none select-none cursor-move text-base font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}
+          title="Mantén pulsado y arrastra para mover"
+        >
+          {response.chart_spec.title}
+        </h3>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {response.kpis?.length ? (
+          <GrillaIndicadores kpis={response.kpis} isDark={isDark} />
+        ) : (
+          <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>La respuesta no trae indicadores.</p>
+        )}
+        {response.lectura && (
+          <p className={`mt-3 text-sm leading-6 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{response.lectura}</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const [userPrompt, setUserPrompt] = useState('Muestra la cobertura de clientes por comuna, de mayor a menor');
@@ -51,6 +165,11 @@ export default function Home() {
   const selectedChartType = selectedChart?.response.chart_spec.chart_type;
   const canSetXBounds = selectedChartType === 'scatter' || selectedChartType === 'horizontal_bar';
   const canSetYBounds = selectedChartType === 'scatter' || ['bar', 'line', 'area'].includes(selectedChartType ?? '');
+  // Contenedor desplazable del lienzo: da el ancho disponible para acomodar y el área visible para maximizar.
+  const lienzoRef = useRef<HTMLElement>(null);
+  // Copia de las tarjetas para leer el estado más reciente al terminar una carga asíncrona.
+  const chartsRef = useRef<DashboardChart[]>([]);
+  const [desplazarA, setDesplazarA] = useState<number | null>(null);
 
   const loadChart = async (request: () => Promise<ApiResponse>) => {
     setIsLoading(true);
@@ -68,6 +187,7 @@ export default function Home() {
           y: 24 + index * 34,
           width: 720,
           height: 520,
+          lectura: data.lectura,
         };
         return [...current, chart];
       });
@@ -83,6 +203,157 @@ export default function Home() {
     if (!userPrompt.trim()) return;
     void loadChart(() => sendChatPrompt(userPrompt));
   };
+
+  // "Caso guía": agrega al lienzo la tarjeta de indicadores y los 5 gráficos como tarjetas normales.
+  // Si se pulsa otra vez, reemplaza las del caso anterior y conserva las del chat.
+  const cargarCasoGuia = async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+    try {
+      // Las 6 peticiones pasan por un limitador y cada una se reintenta antes de darse por fallida.
+      const limitar = crearLimitador(PETICIONES_SIMULTANEAS_CASO_GUIA);
+      const pedir = <T,>(peticion: () => Promise<T>) => limitar(() => conReintentos(peticion));
+      const [[resumen], paneles] = await Promise.all([
+        Promise.allSettled([pedir(getCasoGuiaResumen)]),
+        Promise.allSettled(PANELES_CASO_GUIA.map((id) => pedir(() => getCasoGuiaPanel(id)))),
+      ]);
+      const errores: string[] = [];
+      const nuevas: { tarjeta: DashboardChart; anchoCompleto: boolean }[] = [];
+      const base = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const preguntas = new Map<string, string>(
+        resumen.status === 'fulfilled'
+          ? resumen.value.paneles.map((panel) => [panel.id, panel.pregunta] as [string, string])
+          : [],
+      );
+
+      if (resumen.status === 'fulfilled') {
+        nuevas.push({
+          anchoCompleto: true,
+          tarjeta: {
+            id: `${base}-indicadores`,
+            response: {
+              status: 'success',
+              row_count: resumen.value.kpis.length,
+              chart_spec: { chart_type: 'indicadores', title: TITULO_INDICADORES, x_axis: '', series: [] },
+              data: [],
+              kpis: resumen.value.kpis,
+            },
+            x: 0,
+            y: 0,
+            width: 0,
+            height: ALTO_INDICADORES,
+            grupo: 'caso-guia',
+          },
+        });
+      } else {
+        errores.push(`faltan los indicadores (${mensajeDeError(resumen.reason)})`);
+      }
+
+      paneles.forEach((resultado, indice) => {
+        const id = PANELES_CASO_GUIA[indice];
+        if (resultado.status === 'fulfilled') {
+          nuevas.push({
+            anchoCompleto: false,
+            tarjeta: {
+              id: `${base}-${id}`,
+              response: resultado.value,
+              x: 0,
+              y: 0,
+              width: 0,
+              height: id === 'intervalo' ? ALTO_INTERVALO : ALTO_GRAFICO,
+              grupo: 'caso-guia',
+              lectura: resultado.value.lectura,
+              pregunta: preguntas.get(id),
+            },
+          });
+        } else {
+          errores.push(`no se pudo cargar «${NOMBRE_PANEL[id]}» (${mensajeDeError(resultado.reason)})`);
+        }
+      });
+
+      if (nuevas.length === 0) {
+        setErrorMessage(`No se pudo cargar el caso guía: ${errores.join('; ')}.`);
+        return;
+      }
+
+      // Debajo de las tarjetas del chat, para no tapar ninguna.
+      const restantes = chartsRef.current.filter((tarjeta) => tarjeta.grupo !== 'caso-guia');
+      const yInicial = restantes.length
+        ? Math.max(...restantes.map((tarjeta) => tarjeta.y + tarjeta.height)) + SEPARACION
+        : MARGEN;
+      const geometrias = acomodarTarjetas(
+        nuevas.map(({ tarjeta, anchoCompleto }) => ({ alto: tarjeta.height, anchoCompleto })),
+        lienzoRef.current?.clientWidth ?? 1200,
+        yInicial,
+      );
+      const colocadas = nuevas.map(({ tarjeta }, indice) => ({ ...tarjeta, ...geometrias[indice] }));
+      setCharts([...restantes, ...colocadas]);
+      setSelectedChartId(colocadas[0].id);
+      setDesplazarA(Math.max(0, yInicial - MARGEN));
+      if (errores.length) setErrorMessage(`El caso guía quedó incompleto: ${errores.join('; ')}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // "Preguntar esto en el chat": envía la pregunta exacta y agrega la respuesta como otra tarjeta.
+  const preguntarEnChat = (pregunta: string) => {
+    setUserPrompt(pregunta);
+    void loadChart(() => sendChatPrompt(pregunta));
+  };
+
+  const alternarDetalles = (id: string) => {
+    setCharts((actual) => actual.map((tarjeta) => (tarjeta.id === id ? { ...tarjeta, detallesAbiertos: !tarjeta.detallesAbiertos } : tarjeta)));
+  };
+
+  const alternarMinimizada = (id: string) => {
+    setCharts((actual) => actual.map((tarjeta) => (tarjeta.id === id ? alternarMinimizacion(tarjeta) : tarjeta)));
+  };
+
+  // Maximizar ocupa el área visible del lienzo, por encima de las demás; solo una a la vez.
+  const alternarMaximizada = (id: string) => {
+    const lienzo = lienzoRef.current;
+    const areaVisible = {
+      x: (lienzo?.scrollLeft ?? 0) + MARGEN_MAXIMIZADA,
+      y: (lienzo?.scrollTop ?? 0) + MARGEN_MAXIMIZADA,
+      width: Math.max(ANCHO_MINIMO, (lienzo?.clientWidth ?? 1200) - 2 * MARGEN_MAXIMIZADA),
+      height: Math.max(ALTO_MINIMO, (lienzo?.clientHeight ?? 800) - 2 * MARGEN_MAXIMIZADA),
+    };
+    setCharts((actual) => actual.map((tarjeta) => {
+      if (tarjeta.id === id) return alternarMaximizacion(tarjeta, areaVisible);
+      return tarjeta.ventana === 'maximizada' ? restaurar(tarjeta) : tarjeta;
+    }));
+    setSelectedChartId(id);
+  };
+
+  const ordenarLienzo = () => {
+    const anchoLienzo = lienzoRef.current?.clientWidth ?? 1200;
+    setCharts((actual) => ordenarTarjetas(actual, anchoLienzo));
+    setDesplazarA(0);
+  };
+
+  useEffect(() => {
+    chartsRef.current = charts;
+  }, [charts]);
+
+  // Escape restaura la tarjeta maximizada.
+  useEffect(() => {
+    const alPresionarTecla = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setCharts((actual) => (actual.some((tarjeta) => tarjeta.ventana === 'maximizada')
+        ? actual.map((tarjeta) => (tarjeta.ventana === 'maximizada' ? restaurar(tarjeta) : tarjeta))
+        : actual));
+    };
+    window.addEventListener('keydown', alPresionarTecla);
+    return () => window.removeEventListener('keydown', alPresionarTecla);
+  }, []);
+
+  // Lleva el lienzo hasta las tarjetas recién acomodadas, ya dibujadas.
+  useEffect(() => {
+    if (desplazarA === null) return;
+    lienzoRef.current?.scrollTo({ top: desplazarA, behavior: 'smooth' });
+    setDesplazarA(null);
+  }, [desplazarA]);
 
   const startInteraction = (
     event: PointerEvent<HTMLElement>,
@@ -121,8 +392,8 @@ export default function Home() {
       }
       return {
         ...chart,
-        width: Math.max(360, pointerInteraction.initialWidth + deltaX),
-        height: Math.max(320, pointerInteraction.initialHeight + deltaY),
+        width: Math.max(ANCHO_MINIMO, pointerInteraction.initialWidth + deltaX),
+        height: Math.max(ALTO_MINIMO, pointerInteraction.initialHeight + deltaY),
       };
     }));
   };
@@ -178,12 +449,23 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex flex-1 min-h-0">
-        <section className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}>
+      <div className="relative flex flex-1 min-h-0">
+        <section ref={lienzoRef} className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}>
           {errorMessage && (
-            <div className="absolute left-4 right-4 top-4 z-[2000] flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">
-              <AlertCircle className="h-5 w-5 shrink-0" />
-              <span>{errorMessage}</span>
+            // Envoltura fija de alto cero: el aviso queda visible aunque el lienzo esté desplazado.
+            <div className="sticky top-0 z-[2000] h-0">
+              <div role="alert" className="absolute left-4 right-4 top-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">
+                <AlertCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 flex-1 break-words">{errorMessage}</span>
+                <button
+                  type="button"
+                  onClick={() => setErrorMessage(null)}
+                  aria-label="Cerrar aviso"
+                  className="shrink-0 rounded-md p-1 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
           )}
           {charts.length === 0 && (
@@ -192,42 +474,110 @@ export default function Home() {
             </div>
           )}
           <div className="relative min-w-full min-h-full" style={{ height: dashboardHeight }}>
-            {charts.map((chart, index) => (
-              <article
-                key={chart.id}
-                onClick={() => setSelectedChartId(chart.id)}
-                className={`absolute rounded-2xl ${isDarkMode ? 'bg-[#111827]' : 'bg-white'} ${selectedChartId === chart.id ? 'ring-2 ring-blue-500 shadow-2xl' : 'shadow-lg'} overflow-hidden`}
-                style={{ left: chart.x, top: chart.y, width: chart.width, height: chart.height, zIndex: selectedChartId === chart.id ? charts.length + 1 : index + 1 }}
-              >
-                <button
-                  type="button"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => { event.stopPropagation(); deleteChart(chart.id); }}
-                  className={`absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm ${isDarkMode ? 'border-slate-700 bg-slate-900/95 text-red-300 hover:bg-slate-800' : 'border-red-100 bg-white/95 text-red-600 hover:bg-red-50'}`}
-                  title="Eliminar gráfico"
-                  aria-label="Eliminar gráfico"
+            {charts.map((chart, index) => {
+              const minimizada = chart.ventana === 'minimizada';
+              const maximizada = chart.ventana === 'maximizada';
+              const titulo = chart.response.chart_spec.title;
+              const arrastre = {
+                onTitlePointerDown: (event: PointerEvent<HTMLElement>) => startInteraction(event, chart, 'move'),
+                onTitlePointerMove: continueInteraction,
+                onTitlePointerUp: () => setPointerInteraction(null),
+              };
+              return (
+                <article
+                  key={chart.id}
+                  aria-label={titulo}
+                  onClick={() => setSelectedChartId(chart.id)}
+                  className={`absolute rounded-2xl ${isDarkMode ? 'bg-[#111827]' : 'bg-white'} ${selectedChartId === chart.id ? 'ring-2 ring-blue-500 shadow-2xl' : 'shadow-lg'} overflow-hidden`}
+                  style={{
+                    left: chart.x,
+                    top: chart.y,
+                    width: chart.width,
+                    height: chart.height,
+                    zIndex: maximizada ? charts.length + 2 : selectedChartId === chart.id ? charts.length + 1 : index + 1,
+                  }}
                 >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-                <DynamicChart
-                  response={chart.response}
-                  isDark={isDarkMode}
-                  compact={chart.width < 500 || chart.height < 400}
-                  onTitlePointerDown={(event) => startInteraction(event, chart, 'move')}
-                  onTitlePointerMove={continueInteraction}
-                  onTitlePointerUp={() => setPointerInteraction(null)}
-                />
-                <div
-                  onPointerDown={(event) => startInteraction(event, chart, 'resize')}
-                  onPointerMove={continueInteraction}
-                  onPointerUp={() => setPointerInteraction(null)}
-                  onPointerCancel={() => setPointerInteraction(null)}
-                  className={`absolute bottom-0 right-0 z-20 h-4 w-4 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
-                  title="Arrastrar para cambiar el tamaño"
-                  aria-label="Cambiar tamaño del gráfico"
-                />
-              </article>
-            ))}
+                  <div className={`absolute right-3 z-20 flex items-center gap-1 ${minimizada ? 'top-2' : 'top-3'}`}>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); alternarMinimizada(chart.id); }}
+                      className={claseBotonTarjeta(isDarkMode)}
+                      title={minimizada ? 'Restaurar tamaño' : 'Minimizar'}
+                      aria-label={minimizada ? `Restaurar tamaño de ${titulo}` : `Minimizar ${titulo}`}
+                    >
+                      {minimizada ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <Minus className="h-3.5 w-3.5" aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); alternarMaximizada(chart.id); }}
+                      className={claseBotonTarjeta(isDarkMode)}
+                      title={maximizada ? 'Restaurar (Esc)' : 'Maximizar'}
+                      aria-label={maximizada ? `Restaurar ${titulo}` : `Maximizar ${titulo}`}
+                    >
+                      {maximizada ? <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" /> : <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />}
+                    </button>
+                    <button
+                      type="button"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); deleteChart(chart.id); }}
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 ${isDarkMode ? 'border-slate-700 bg-slate-900/95 text-red-300 hover:bg-slate-800' : 'border-red-100 bg-white/95 text-red-600 hover:bg-red-50'}`}
+                      title="Eliminar gráfico"
+                      aria-label={`Eliminar ${titulo}`}
+                    >
+                      <Trash2 className="h-3 w-3" aria-hidden="true" />
+                    </button>
+                  </div>
+                  {minimizada ? (
+                    <BarraMinimizada titulo={titulo} isDark={isDarkMode} {...arrastre} />
+                  ) : chart.response.chart_spec.chart_type === 'indicadores' ? (
+                    <TarjetaIndicadores response={chart.response} isDark={isDarkMode} {...arrastre} />
+                  ) : (
+                    <DynamicChart
+                      response={chart.response}
+                      isDark={isDarkMode}
+                      compact={chart.width < 500 || chart.height < 400}
+                      lectura={chart.height >= ALTO_PARA_LECTURA ? chart.lectura : undefined}
+                      acciones={chart.grupo === 'caso-guia' ? (
+                        <button
+                          type="button"
+                          aria-expanded={Boolean(chart.detallesAbiertos)}
+                          onClick={() => alternarDetalles(chart.id)}
+                          className={claseBotonTexto(isDarkMode)}
+                        >
+                          Detalles
+                        </button>
+                      ) : undefined}
+                      {...arrastre}
+                    />
+                  )}
+                  {chart.detallesAbiertos && !minimizada && (
+                    <DetallesTarjeta
+                      titulo={titulo}
+                      lectura={chart.lectura}
+                      pregunta={chart.pregunta}
+                      sql={chart.response.generated_sql}
+                      datos={chart.response.data}
+                      isDark={isDarkMode}
+                      onPreguntar={preguntarEnChat}
+                      onCerrar={() => alternarDetalles(chart.id)}
+                    />
+                  )}
+                  {!minimizada && !maximizada && (
+                    <div
+                      onPointerDown={(event) => startInteraction(event, chart, 'resize')}
+                      onPointerMove={continueInteraction}
+                      onPointerUp={() => setPointerInteraction(null)}
+                      onPointerCancel={() => setPointerInteraction(null)}
+                      className={`absolute bottom-0 right-0 z-20 h-4 w-4 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
+                      title="Arrastrar para cambiar el tamaño"
+                      aria-label="Cambiar tamaño del gráfico"
+                    />
+                  )}
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -332,6 +682,7 @@ export default function Home() {
             )}
           </aside>
         )}
+
       </div>
 
       <footer className={`shrink-0 border-t px-4 py-3 sm:px-6 ${isDarkMode ? 'border-slate-800 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
@@ -354,11 +705,22 @@ export default function Home() {
           </button>
           <button
             type="button"
-            onClick={() => void loadChart(getCasoGuia)}
+            onClick={() => void cargarCasoGuia()}
             disabled={isLoading}
-            className={`shrink-0 rounded-xl border px-4 py-3.5 text-sm font-medium transition-colors disabled:opacity-50 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            className={`shrink-0 rounded-xl border px-4 py-3.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             Caso guía
+          </button>
+          <button
+            type="button"
+            onClick={ordenarLienzo}
+            disabled={charts.length === 0}
+            title="Ordenar las tarjetas del lienzo sin que se encimen"
+            aria-label="Ordenar tarjetas"
+            className={`flex shrink-0 items-center gap-2 rounded-xl border px-3 py-3.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 ${isDarkMode ? 'border-slate-700 bg-[#111827] text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Ordenar</span>
           </button>
         </div>
       </footer>

@@ -19,6 +19,16 @@ export interface ChartSpec {
   size_key?: string;
   size_label?: string;
   label_key?: string;
+  low_key?: string;
+  high_key?: string;
+  ref_value?: number;
+  ref_x_key?: string;
+  ref_y_key?: string;
+  highlight_key?: string;
+  label_filter_key?: string;
+  footer_key?: string;
+  footer_label?: string;
+  categories_top_down?: boolean;
 }
 
 export interface ApiResponse {
@@ -26,6 +36,29 @@ export interface ApiResponse {
   row_count: number;
   chart_spec: ChartSpec;
   data: Record<string, any>[];
+  generated_sql?: string;
+  lectura?: string;
+  kpis?: Indicador[];
+}
+
+export interface Indicador {
+  id: string;
+  titulo: string;
+  valor: string;
+  detalle: string;
+}
+
+export interface PanelResumen {
+  id: string;
+  titulo: string;
+  pregunta: string;
+  lectura: string;
+}
+
+export interface CasoGuiaResumen {
+  status: string;
+  kpis: Indicador[];
+  paneles: PanelResumen[];
 }
 
 export interface QueryRequest {

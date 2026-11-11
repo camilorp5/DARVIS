@@ -27,6 +27,20 @@ node_modules/
 .next/
 backend/__pycache__/
 backend/.env
+.env
+.env.*
+frontend/.env*
+!.env.example
 # Generados
 frontend/AGENTS.md
 integracion_datos/salida/checksums_v*.txt
+
+# Documentos de trabajo y herramientas de IA
+CLAUDE.md
+.claude/
+AGENTS.md
+CONTEXTO_*.md
+integracion_datos/perfil_fuentes.md
+integracion_datos/salida/calidad_integracion.md
+backend/data/raw/EDA_REPORT.md
+backend/data/raw/eda_plots/

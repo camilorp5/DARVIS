@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import duckdb
@@ -8,6 +9,7 @@ import json
 import re
 from groq import Groq
 from dotenv import load_dotenv
+from caso_guia_paneles import PANELES, PANELES_GRAFICOS, SQL_INTERVALO, armar_kpis, buscar_panel
 
 # 2. Cargar las variables del archivo .env a os.environ
 load_dotenv()
@@ -22,7 +24,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.exception_handler(Exception)
+async def error_inesperado(request: Request, exc: Exception):
+    """Error no previsto: responde JSON con un mensaje claro.
+
+    Este manejador corre fuera de CORSMiddleware, así que agrega la cabecera CORS él mismo;
+    sin ella el navegador oculta el error y solo muestra "Failed to fetch".
+    """
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno del backend de DARVIS ({type(exc).__name__}). Vuelve a intentarlo; si se repite, revisa la consola del servidor."},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
+
 con = duckdb.connect(database=':memory:')
+
+def _consultar(sql: str):
+    """Ejecuta una consulta en un cursor propio y devuelve un DataFrame.
+
+    FastAPI atiende los endpoints `def` en varios hilos, y una conexión de DuckDB no admite llamadas
+    simultáneas ("connection is busy with another call"). Cada llamada usa su propio cursor sobre la
+    misma base en memoria, así que varias peticiones a la vez no comparten estado.
+    """
+    cursor = con.cursor()
+    try:
+        return cursor.execute(sql).fetchdf()
+    finally:
+        cursor.close()
 groq_client: Optional[Groq] = None
 
 def obtener_groq() -> Groq:
@@ -75,7 +103,8 @@ ADVERTENCIAS OBLIGATORIAS:
 - decsalud: dimensión de salud.
 - dectrabajo: dimensión de trabajo.
 - decingresos: dimensión de ingresos.
-- decpercepcioncalidadvida: percepción subjetiva de calidad de vida."""
+- decpercepcioncalidadvida: percepción subjetiva de calidad de vida.
+- Sentido de los valores: mayor valor = mejor calidad de vida; la columna decvulnerabilida también: valor alto = menos vulnerable (pendiente confirmar en la ficha de MEData)."""
 }
 
 @app.on_event("startup")
@@ -146,12 +175,58 @@ CASO_GUIA_CHART = {
 def caso_guia():
     """Caso guía sin modelo; responde con la misma forma que /chat."""
     try:
-        df = con.execute(CASO_GUIA_SQL).fetchdf()
+        df = _consultar(CASO_GUIA_SQL)
     except duckdb.CatalogException:
         raise HTTPException(status_code=503, detail="La base integrada no está cargada: falta integracion_datos/salida/base_integrada_comuna.parquet.")
     json_data = df.to_json(orient="records", date_format="iso")
     response_body = f'{{"status":"success","generated_sql":{json.dumps(CASO_GUIA_SQL)},"row_count":{len(df)},"chart_spec":{json.dumps(CASO_GUIA_CHART, ensure_ascii=False)},"data":{json_data}}}'
     return Response(content=response_body, media_type="application/json")
+
+def _ejecutar_consulta_fija(sql: str) -> List[Dict[str, Any]]:
+    """Valida y ejecuta una consulta fija del caso guía; devuelve las filas como diccionarios JSON."""
+    try:
+        df = _consultar(validar_sql(sql))
+    except duckdb.CatalogException:
+        raise HTTPException(status_code=503, detail="Faltan tablas del caso guía: revisa los Parquet de integracion_datos/salida/.")
+    return json.loads(df.to_json(orient="records", date_format="iso"))
+
+def _respuesta_panel(panel: Dict[str, Any], con_kpis: bool = False) -> Dict[str, Any]:
+    """Misma forma que /chat (status, generated_sql, row_count, chart_spec, data) más la lectura del panel."""
+    datos = _ejecutar_consulta_fija(panel["sql"])
+    respuesta = {
+        "status": "success",
+        "generated_sql": panel["sql"],
+        "row_count": len(datos),
+        "chart_spec": panel["chart_spec"],
+        "data": datos,
+        "lectura": panel["lectura"](datos),
+    }
+    if con_kpis:
+        respuesta["kpis"] = armar_kpis(datos[0], _ejecutar_consulta_fija(SQL_INTERVALO))
+    return respuesta
+
+@app.get("/caso-guia/resumen")
+def caso_guia_resumen():
+    """Indicadores del caso guía y lectura de cada panel, sin modelo."""
+    kpis = armar_kpis(_ejecutar_consulta_fija(PANELES["resumen"]["sql"])[0], _ejecutar_consulta_fija(SQL_INTERVALO))
+    paneles = [
+        {
+            "id": pid,
+            "titulo": PANELES[pid]["titulo"],
+            "pregunta": PANELES[pid]["pregunta"],
+            "lectura": PANELES[pid]["lectura"](_ejecutar_consulta_fija(PANELES[pid]["sql"])),
+        }
+        for pid in PANELES_GRAFICOS
+    ]
+    return {"status": "success", "kpis": kpis, "paneles": paneles}
+
+# Va después de /caso-guia/resumen para que "resumen" no se tome como id de panel.
+@app.get("/caso-guia/{panel_id}")
+def caso_guia_panel(panel_id: str):
+    """Un panel fijo del caso guía, con la misma forma que /chat más su lectura."""
+    if panel_id not in PANELES_GRAFICOS:
+        raise HTTPException(status_code=404, detail=f"No existe el panel '{panel_id}' del caso guía.")
+    return _respuesta_panel(PANELES[panel_id])
 
 class ChatPromptRequest(BaseModel):
     prompt: str
@@ -160,6 +235,12 @@ class ChatPromptRequest(BaseModel):
 def process_chat_prompt(request: ChatPromptRequest):
     """Procesa consulta con Groq, imprime logs de auditoría en consola y ejecuta SQL en DuckDB."""
     try:
+        # 0. Preguntas ancla del caso guía: se responden con su consulta fija, sin Groq ni GROQ_API_KEY.
+        panel = buscar_panel(request.prompt)
+        if panel:
+            print(f"\n[AUDITORÍA ANCLA] Pregunta ancla '{panel['id']}' resuelta con su consulta fija, sin Groq: '{request.prompt}'")
+            return _respuesta_panel(panel, con_kpis=panel["id"] == "resumen")
+
         # 1. Construir prompt del sistema dinámico con el esquema 100% real de DuckDB
         system_prompt = f"""
 Eres DARVIS, un asistente experto en SQL para DuckDB y visualización de datos.
@@ -238,7 +319,7 @@ Responde ÚNICAMENTE con un objeto JSON estructurado exactamente así, sin bloqu
         sql_validado = validar_sql(generated_sql)
 
         # 4. Ejecución en DuckDB
-        df = con.execute(f"SELECT * FROM (\n{sql_validado}\n) AS resultado LIMIT {MAX_FILAS}").fetchdf()
+        df = _consultar(f"SELECT * FROM (\n{sql_validado}\n) AS resultado LIMIT {MAX_FILAS}")
         if MODO_COMPLETO and COLUMNAS_ID & {str(columna).upper() for columna in df.columns}:
             raise HTTPException(status_code=400, detail="La consulta devolvería identificadores; usa agregados.")
         print(f"📊 [AUDITORÍA DUCKDB] Filas Obtenidas: {len(df)}")

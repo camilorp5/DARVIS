@@ -1,0 +1,107 @@
+INSTRUCCIONES - DARVIS
+Equipo: DataBrothers · Hackathon de Datos ITM 2026
+
+1. QUÉ ES
+DARVIS es un tablero interactivo con asistente de chat: cruza la cartera anonimizada de la
+Cooperativa JFK con datos abiertos de MEData y datos.gov.co por comuna de Medellín y responde con
+gráficos que se pueden mover, ampliar y ordenar.
+Caso guía: ¿en qué comunas de Medellín hay espacio para ampliar la presencia de JFK y llegar a
+personas con más necesidad, donde los clientes actuales de JFK no se atrasan en sus pagos más de
+lo esperado?
+
+2. PROBARLO EN LÍNEA
+https://darvis-two.vercel.app/
+La primera carga puede tardar un poco mientras se activa el servidor.
+La versión en línea se comprueba con los mismos pasos de la sección 4 (desde la letra b). Los
+comandos de la sección 3 sirven para ejecutarlo en local.
+
+3. EJECUTARLO
+Requisitos: Python 3.11 o superior (probado con 3.11.3), Node.js 20.9 o superior (probado con
+22.17.1) y npm. Internet solo para instalar dependencias. No se necesita ninguna cuenta ni clave.
+Tiempo aprox.: 10 minutos. Comandos para Windows (PowerShell), desde la carpeta principal del
+repositorio. En macOS o Linux cambian dos cosas: usar .venv/bin/python en lugar de
+.venv\Scripts\python.exe, y en el paso 6 escribir: export NEXT_PUBLIC_API_URL=http://localhost:8000
+  1) python -m venv .venv
+  2) .venv\Scripts\python.exe -m pip install -r requirements.txt
+  3) .venv\Scripts\python.exe backend/test_caso_guia.py        (debe terminar en la palabra OK)
+  4) cd frontend
+  5) npm install
+  6) $env:NEXT_PUBLIC_API_URL = "http://localhost:8000"        (usar el servidor de datos local)
+  7) npm run build
+  8) npm run start                                    (dejar esta ventana abierta: es la página)
+  9) Abrir otra ventana de PowerShell en la carpeta principal y ejecutar estos dos comandos:
+       cd backend
+       ..\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+     (dejar esta ventana abierta: es el servidor de datos)
+ 10) Abrir http://localhost:3000 en el navegador
+Opcional: copiar .env.example como backend\.env y escribir la clave en GROQ_API_KEY, solo para
+preguntas libres en el chat; después cerrar y repetir el paso 9. El caso guía no la necesita.
+Si algo falla:
+  - python no se reconoce o es anterior a 3.11: en el paso 1 usar  py -3.11 -m venv .venv
+  - puerto 3000 ocupado: en el paso 8 usar  npm run start -- -p 3001  y abrir http://localhost:3001
+  - puerto 8000 ocupado: cerrar el programa que lo usa
+  - falta node_modules: repetir el paso 5
+  - la página muestra "Failed to fetch": comprobar que la ventana del paso 9 sigue abierta
+
+4. QUÉ DEBE VER EL JURADO
+a) El paso 3 termina con OK (29 comprobaciones).
+b) En http://localhost:3000 pulsar el botón «Caso guía» (parte inferior). Aparecen 6 tarjetas en
+   el lienzo: indicadores y 5 gráficos (embudo, cobertura contra hacinamiento, razón de mora con
+   intervalo, brecha de clientes, robustez con IMCV).
+c) Indicadores esperados: «2 de 16» comunas candidatas (Doce de Octubre y Villa Hermosa); brecha
+   de 21.584 clientes; cobertura 80,0 y 111,3 por 1.000 habitantes; razón O/E 0,915 y 0,922 (el
+   intervalo incluye 1: sin evidencia de más mora); 83,8 % de clientes ubicados (352.783 de
+   421.049); 342 oficinas financieras en Medellín (Superfinanciera, corte 2026-06-30).
+d) Embudo: 16 comunas, luego 6, luego 2. Brecha: Doce de Octubre 15.154 y Villa Hermosa 6.430.
+   Robustez: correlación de Pearson -0,88 entre hacinamiento e IMCV 2018.
+e) Prueba por chat (sin clave): escribir exactamente «¿Cuál es el resumen de resultados del caso
+   guía?» y pulsar Consultar; aparece la tarjeta de indicadores. Las otras 5 preguntas exactas
+   están en «Detalles» de cada gráfico.
+f) Cada tarjeta se puede mover (arrastrando el título), redimensionar (esquina inferior derecha),
+   minimizar, maximizar y reordenar con el botón «Ordenar». Cada gráfico del caso guía muestra la
+   consulta SQL que lo genera en «Detalles».
+
+5. DATOS Y FUENTES
+Archivos que carga la aplicación, en integracion_datos/salida/ (agregados, sin identificadores):
+  - base_integrada_comuna.parquet · una fila por comuna o corregimiento de Medellín (21); la
+    construye integracion_datos/build_base_integrada.py con las fuentes de abajo.
+  - contexto_medellin_sfc.parquet · una fila con el total de Medellín (oficinas y cartera).
+  - indice_multidimensional_calidad_vida.parquet · IMCV por comuna y año, 2011 a 2018.
+  - fuentes_parquet/ · copia en Parquet de las cuatro fuentes abiertas descargadas
+    (hacinamiento, proyecciones, circulos y datosgov_medellin).
+Fuentes:
+  - Cooperativa JFK · clientes, créditos y saldos anonimizados, suministrados por el comité del
+    Hackathon · sin enlace público · licencia: [PENDIENTE: confirmar con el comité]. Los
+    identificadores son claves opacas y nunca se muestran.
+  - MEData · hacinamiento Sisbén III por barrio, 2009 a 2020 (hacinamiento_barrio_sisben3.csv,
+    descargado el 2026-11-08) · https://medata.app.medellin.gov.co/ · enlace exacto del conjunto
+    y licencia: [PENDIENTE].
+  - MEData · proyecciones de población 2020 por comuna
+    (proyecciones_de_poblacion_medellin_2020.csv, descargado el 2026-11-08) · enlace exacto y
+    licencia: [PENDIENTE].
+  - MEData · Índice Multidimensional de Calidad de Vida, 2011 a 2018; se usa 2018, solo para
+    robustez (indice_multidimensional_encuesta_calidad_de_vida.csv) · enlace exacto, fecha de
+    consulta y licencia: [PENDIENTE].
+  - datos.gov.co (Superfinanciera) · saldo de las captaciones y colocaciones por municipios; se
+    usan las oficinas y la cartera de Medellín, corte 2026-06-30 (descargado el 2026-11-08) ·
+    enlace exacto y licencia: [PENDIENTE].
+  - MEData · créditos otorgados mediante círculos solidarios
+    (creditos_otorgados_mediante_circulos_solidarios.csv, descargado el 2026-11-08) · cargado en
+    la integración; no se usa en el caso guía · enlace exacto y licencia: [PENDIENTE].
+Modo por defecto (agregado): la aplicación solo carga las tablas agregadas de
+integracion_datos/salida/; ninguna muestra identificadores. Los Parquet de backend/data/processed/
+no hacen falta para este modo.
+
+6. USO DE IA
+Claude (Anthropic): Claude Code para escribir y revisar el código del backend y del frontend, y
+Claude para análisis y redacción de apoyo; todo el código y las cifras fueron revisados por el
+equipo. Groq con el modelo openai/gpt-oss-20b: solo para preguntas libres del chat (opcional,
+requiere clave). Las 6 preguntas del caso guía se resuelven con consultas SQL fijas, sin IA,
+verificadas por backend/test_caso_guia.py. Cómo se comprueban las respuestas de la IA: cada
+gráfico del caso guía muestra su consulta SQL; en las preguntas libres, la consulta generada
+viene en la respuesta del servidor y queda en su consola; el backend solo ejecuta una consulta
+de lectura (SELECT) sobre las tablas cargadas, y los resultados del caso guía se validan con
+pruebas automáticas.
+
+7. CONTACTO
+Camilo Rafael Pérez Chaves · camiloperez1147286@correo.itm.edu.co

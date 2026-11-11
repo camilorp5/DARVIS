@@ -1,0 +1,157 @@
+{
+  "comunas_comparadas": 16,
+  "pearson_hacinamiento_imcv2018": -0.8815,
+  "pearson_ic95": [
+    -0.9584,
+    -0.6853
+  ],
+  "pearson_hacinamiento_imcv_media_2011_2018": -0.8831,
+  "spearman_hacinamiento_imcv2018": -0.95,
+  "r2": 0.7771,
+  "concordancia_sobre_bajo_mediana": [
+    14,
+    16
+  ],
+  "medianas": {
+    "cobertura": 157.2235,
+    "hacinamiento": 14.8296,
+    "imcv_2018": 47.09
+  },
+  "cuadrante_hacinamiento": [
+    "Doce de Octubre",
+    "Santa Cruz",
+    "Villa Hermosa",
+    "Aranjuez",
+    "La Candelaria",
+    "San Javier"
+  ],
+  "candidatas_hacinamiento": [
+    "Doce de Octubre",
+    "Villa Hermosa"
+  ],
+  "cuadrante_imcv": [
+    "Doce de Octubre",
+    "Santa Cruz",
+    "Villa Hermosa",
+    "Aranjuez",
+    "San Javier"
+  ],
+  "candidatas_imcv": [
+    "Doce de Octubre",
+    "Villa Hermosa"
+  ],
+  "mismas_candidatas": true,
+  "relacion_con_jfk": {
+    "cobertura": {
+      "hacinamiento": -0.1016,
+      "imcv": -0.1388
+    },
+    "razon_oe": {
+      "hacinamiento": 0.3433,
+      "imcv": -0.4532
+    },
+    "mora_observada": {
+      "hacinamiento": 0.5017,
+      "imcv": -0.6687
+    }
+  },
+  "puestos_necesidad": [
+    {
+      "comuna": "La Candelaria",
+      "hacinamiento": 8,
+      "imcv": 12,
+      "diferencia": -4
+    },
+    {
+      "comuna": "Castilla",
+      "hacinamiento": 12,
+      "imcv": 9,
+      "diferencia": 3
+    },
+    {
+      "comuna": "El Poblado",
+      "hacinamiento": 14,
+      "imcv": 16,
+      "diferencia": -2
+    },
+    {
+      "comuna": "Aranjuez",
+      "hacinamiento": 6,
+      "imcv": 7,
+      "diferencia": -1
+    },
+    {
+      "comuna": "Doce de Octubre",
+      "hacinamiento": 7,
+      "imcv": 6,
+      "diferencia": 1
+    },
+    {
+      "comuna": "La América",
+      "hacinamiento": 15,
+      "imcv": 14,
+      "diferencia": 1
+    },
+    {
+      "comuna": "Laureles - Estadio",
+      "hacinamiento": 16,
+      "imcv": 15,
+      "diferencia": 1
+    },
+    {
+      "comuna": "Robledo",
+      "hacinamiento": 9,
+      "imcv": 8,
+      "diferencia": 1
+    },
+    {
+      "comuna": "Belén",
+      "hacinamiento": 13,
+      "imcv": 13,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Buenos Aires",
+      "hacinamiento": 10,
+      "imcv": 10,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Guayabal",
+      "hacinamiento": 11,
+      "imcv": 11,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Manrique",
+      "hacinamiento": 3,
+      "imcv": 3,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Popular",
+      "hacinamiento": 1,
+      "imcv": 1,
+      "diferencia": 0
+    },
+    {
+      "comuna": "San Javier",
+      "hacinamiento": 5,
+      "imcv": 5,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Santa Cruz",
+      "hacinamiento": 2,
+      "imcv": 2,
+      "diferencia": 0
+    },
+    {
+      "comuna": "Villa Hermosa",
+      "hacinamiento": 4,
+      "imcv": 4,
+      "diferencia": 0
+    }
+  ],
+  "decision": "Las dos medidas ordenan las comunas casi igual y las candidatas no cambian: se mantiene el hacinamiento como medida de necesidad y el IMCV queda como prueba de robustez."
+}
