@@ -5,15 +5,13 @@ Equipo: DataBrothers · Hackathon de Datos ITM 2026
 DARVIS es un tablero interactivo con asistente de chat: cruza la cartera anonimizada de la
 Cooperativa JFK con datos abiertos de MEData y datos.gov.co por comuna de Medellín y responde con
 gráficos que se pueden mover, ampliar y ordenar.
-Caso guía: ¿en qué comunas de Medellín hay espacio para ampliar la presencia de JFK y llegar a
-personas con más necesidad, donde los clientes actuales de JFK no se atrasan en sus pagos más de
-lo esperado?
+Caso guía: ¿En qué comunas de Medellín hay oportunidad para ampliar la presencia de JFK y llegar
+a personas con más necesidad, donde la cartera de la cooperativa no muestra más mora de la esperada? 
 
 2. PROBARLO EN LÍNEA
 https://darvis-two.vercel.app/
 La primera carga puede tardar un poco mientras se activa el servidor.
-La versión en línea se comprueba con los mismos pasos de la sección 4 (desde la letra b). Los
-comandos de la sección 3 sirven para ejecutarlo en local.
+La versión en línea se comprueba abriendo el link y pulsando el boton de caso guia.
 
 3. EJECUTARLO
 Requisitos: Python 3.11 o superior (probado con 3.11.3), Node.js 20.9 o superior (probado con
@@ -44,25 +42,23 @@ Si algo falla:
   - la página muestra "Failed to fetch": comprobar que la ventana del paso 9 sigue abierta
 
 4. QUÉ DEBE VER EL JURADO
-a) El paso 3 termina con OK (29 comprobaciones).
-b) En http://localhost:3000 pulsar el botón «Caso guía» (parte inferior). Aparecen 6 tarjetas en
+a) En http://localhost:3000 pulsar el botón «Caso guía» (parte inferior). Aparecen 6 tarjetas en
    el lienzo: indicadores y 5 gráficos (embudo, cobertura contra hacinamiento, razón de mora con
    intervalo, brecha de clientes, robustez con IMCV).
-c) Indicadores esperados: «2 de 16» comunas candidatas (Doce de Octubre y Villa Hermosa); brecha
+b) Indicadores esperados: «2 de 16» comunas candidatas (Doce de Octubre y Villa Hermosa); brecha
    de 21.584 clientes; cobertura 80,0 y 111,3 por 1.000 habitantes; razón O/E 0,915 y 0,922 (el
    intervalo incluye 1: sin evidencia de más mora); 83,8 % de clientes ubicados (352.783 de
    421.049); 342 oficinas financieras en Medellín (Superfinanciera, corte 2026-06-30).
-d) Embudo: 16 comunas, luego 6, luego 2. Brecha: Doce de Octubre 15.154 y Villa Hermosa 6.430.
-   Robustez: correlación de Pearson -0,88 entre hacinamiento e IMCV 2018.
-e) Prueba por chat (sin clave): escribir exactamente «¿Cuál es el resumen de resultados del caso
+c) Embudo: 16 comunas, luego 6, luego 2. Brecha: Doce de Octubre 15.154 y Villa Hermosa 6.430.
+d) Prueba por chat (sin clave): escribir exactamente «¿Cuál es el resumen de resultados del caso
    guía?» y pulsar Consultar; aparece la tarjeta de indicadores. Las otras 5 preguntas exactas
    están en «Detalles» de cada gráfico.
-f) Cada tarjeta se puede mover (arrastrando el título), redimensionar (esquina inferior derecha),
+e) Cada tarjeta se puede mover (arrastrando el título), redimensionar (esquina inferior derecha),
    minimizar, maximizar y reordenar con el botón «Ordenar». Cada gráfico del caso guía muestra la
    consulta SQL que lo genera en «Detalles».
 
 5. DATOS Y FUENTES
-Archivos que carga la aplicación, en integracion_datos/salida/ (agregados, sin identificadores):
+Archivos que carga la aplicación, en integracion_datos/salida/ :
   - base_integrada_comuna.parquet · una fila por comuna o corregimiento de Medellín (21); la
     construye integracion_datos/build_base_integrada.py con las fuentes de abajo.
   - contexto_medellin_sfc.parquet · una fila con el total de Medellín (oficinas y cartera).
@@ -88,9 +84,7 @@ Fuentes:
   - MEData · créditos otorgados mediante círculos solidarios
     (creditos_otorgados_mediante_circulos_solidarios.csv, descargado el 2026-11-08) · cargado en
     la integración; no se usa en el caso guía · enlace exacto y licencia: [PENDIENTE].
-Modo por defecto (agregado): la aplicación solo carga las tablas agregadas de
-integracion_datos/salida/; ninguna muestra identificadores. Los Parquet de backend/data/processed/
-no hacen falta para este modo.
+
 
 6. USO DE IA
 Claude (Anthropic): Claude Code para escribir y revisar el código del backend y del frontend, y
