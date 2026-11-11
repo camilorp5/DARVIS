@@ -1,6 +1,6 @@
 import { ApiResponse, ChartSpec } from '@/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://darvis-j5ei.onrender.com/';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://darvis-j5ei.onrender.com';
 
 export async function executeSqlQuery(sql: string, chartSpec?: ChartSpec): Promise<ApiResponse> {
   const response = await fetch(`${API_BASE_URL}/query`, {
