@@ -133,7 +133,7 @@ export default function DynamicChart({
     if (chartType === 'scatter') {
       const primarySeries = chart_spec.series[0];
       const sizeKey = chart_spec.size_key;
-      const labelKey = chart_spec.label_key;
+      const labelKey = chart_spec.label_key || (cleanData.some((item) => 'nombre_mostrar' in item) ? 'nombre_mostrar' : undefined);
       const labelFilterKey = chart_spec.label_filter_key;
       const refX = chart_spec.ref_x_key ? Number(cleanData[0]?.[chart_spec.ref_x_key]) : NaN;
       const refY = chart_spec.ref_y_key ? Number(cleanData[0]?.[chart_spec.ref_y_key]) : NaN;
@@ -172,6 +172,14 @@ export default function DynamicChart({
         tooltip: {
           ...tooltipOutsideChart,
           trigger: 'item',
+          position: (point: number[], _params: any, _dom: HTMLElement, _rect: any, size: any) => {
+            const [viewWidth, viewHeight] = size.viewSize;
+            const [contentWidth, contentHeight] = size.contentSize;
+            const openRight = point[0] < viewWidth / 2;
+            const x = openRight ? point[0] + 16 : point[0] - contentWidth - 16;
+            const y = Math.max(8, Math.min(point[1] - contentHeight / 2, viewHeight - contentHeight - 8));
+            return [x, y];
+          },
           formatter: (params: any) => [
             params.value[3],
             `${xAxisLabel}: ${showNumber(params.value[0])}`,
@@ -329,7 +337,11 @@ export default function DynamicChart({
     // --- CASO 4: Gráfico de Velocímetro (Gauge) ---
     if (chartType === 'gauge') {
       const primarySeries = chart_spec.series[0];
-      const val = Number(cleanData[0]?.[primarySeries.key] ?? 0);
+      const rawValue = Number(cleanData[0]?.[primarySeries.key] ?? 0);
+      const percentage = Number.isFinite(rawValue)
+        ? Math.min(100, Math.max(0, rawValue <= 1 ? rawValue * 100 : rawValue))
+        : 0;
+      const val = Number(percentage.toFixed(1));
 
       return {
         textStyle: { color: textColor },
@@ -338,8 +350,12 @@ export default function DynamicChart({
           {
             name: primarySeries.label,
             type: 'gauge',
+            min: 0,
+            max: 100,
             progress: { show: true },
-            detail: { valueAnimation: true, formatter: '{value}' },
+            radius: '90%',
+            center: ['50%', '56%'],
+            detail: { valueAnimation: true, formatter: '{value}%' },
             data: [{ value: val, name: primarySeries.label }],
           },
         ],
@@ -361,8 +377,9 @@ export default function DynamicChart({
           splitLine: { lineStyle: { color: splitColor } },
         },
         yAxis: {
+          // Nombre del eje arriba y horizontal; con el eje invertido el extremo de arriba es 'start'.
           type: 'category', data: categories, inverse: Boolean(chart_spec.categories_top_down),
-          name: xAxisLabel, nameLocation: 'middle', nameRotate: 90, nameGap: compact ? 34 : 44,
+          name: xAxisLabel, nameLocation: chart_spec.categories_top_down ? 'start' : 'end', nameRotate: 0, nameGap: compact ? 8 : 10,
           nameTextStyle: { color: textColor, fontSize: axisFontSize },
           axisLabel: {
             color: mutedColor,

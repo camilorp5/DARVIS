@@ -37,6 +37,7 @@ async def error_inesperado(request: Request, exc: Exception):
         headers={"Access-Control-Allow-Origin": "*"},
     )
 
+
 con = duckdb.connect(database=':memory:')
 
 def _consultar(sql: str):

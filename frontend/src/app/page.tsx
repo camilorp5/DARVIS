@@ -1,6 +1,6 @@
 'use client';
 
-import { PointerEvent, useEffect, useRef, useState } from 'react';
+import { PointerEvent, WheelEvent, useEffect, useRef, useState } from 'react';
 import { conReintentos, crearLimitador, getCasoGuiaPanel, getCasoGuiaResumen, sendChatPrompt } from '@/lib/api';
 import { ApiResponse, Indicador } from '@/types';
 import DynamicChart from '@/components/visualization/DynamicChart';
@@ -17,7 +17,7 @@ import {
   restaurar,
   type DashboardChart,
 } from '@/components/lienzo/tarjetas';
-import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon, X, Minus, Maximize2, Minimize2, ChevronDown, LayoutGrid } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon, X, Minus, Plus, Maximize2, Minimize2, ChevronDown, LayoutGrid } from 'lucide-react';
 
 type PointerInteraction = {
   id: string;
@@ -161,6 +161,7 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [canvasZoom, setCanvasZoom] = useState(1);
   const selectedChart = charts.find((chart) => chart.id === selectedChartId) ?? null;
   const selectedChartType = selectedChart?.response.chart_spec.chart_type;
   const canSetXBounds = selectedChartType === 'scatter' || selectedChartType === 'horizontal_bar';
@@ -170,6 +171,21 @@ export default function Home() {
   // Copia de las tarjetas para leer el estado más reciente al terminar una carga asíncrona.
   const chartsRef = useRef<DashboardChart[]>([]);
   const [desplazarA, setDesplazarA] = useState<number | null>(null);
+  // Escala vigente del lienzo, para leerla al terminar una carga asíncrona.
+  const zoomRef = useRef(1);
+
+  // El lienzo se dibuja con transform: scale(canvasZoom) desde la esquina superior izquierda, así que
+  // las medidas del contenedor en pantalla se pasan a coordenadas del lienzo dividiendo por la escala.
+  const medidasLienzo = () => {
+    const lienzo = lienzoRef.current;
+    const escala = zoomRef.current;
+    return {
+      x: (lienzo?.scrollLeft ?? 0) / escala,
+      y: (lienzo?.scrollTop ?? 0) / escala,
+      ancho: (lienzo?.clientWidth ?? 1200) / escala,
+      alto: (lienzo?.clientHeight ?? 800) / escala,
+    };
+  };
 
   const loadChart = async (request: () => Promise<ApiResponse>) => {
     setIsLoading(true);
@@ -283,7 +299,7 @@ export default function Home() {
         : MARGEN;
       const geometrias = acomodarTarjetas(
         nuevas.map(({ tarjeta, anchoCompleto }) => ({ alto: tarjeta.height, anchoCompleto })),
-        lienzoRef.current?.clientWidth ?? 1200,
+        medidasLienzo().ancho,
         yInicial,
       );
       const colocadas = nuevas.map(({ tarjeta }, indice) => ({ ...tarjeta, ...geometrias[indice] }));
@@ -312,12 +328,12 @@ export default function Home() {
 
   // Maximizar ocupa el área visible del lienzo, por encima de las demás; solo una a la vez.
   const alternarMaximizada = (id: string) => {
-    const lienzo = lienzoRef.current;
+    const visible = medidasLienzo();
     const areaVisible = {
-      x: (lienzo?.scrollLeft ?? 0) + MARGEN_MAXIMIZADA,
-      y: (lienzo?.scrollTop ?? 0) + MARGEN_MAXIMIZADA,
-      width: Math.max(ANCHO_MINIMO, (lienzo?.clientWidth ?? 1200) - 2 * MARGEN_MAXIMIZADA),
-      height: Math.max(ALTO_MINIMO, (lienzo?.clientHeight ?? 800) - 2 * MARGEN_MAXIMIZADA),
+      x: visible.x + MARGEN_MAXIMIZADA,
+      y: visible.y + MARGEN_MAXIMIZADA,
+      width: Math.max(ANCHO_MINIMO, visible.ancho - 2 * MARGEN_MAXIMIZADA),
+      height: Math.max(ALTO_MINIMO, visible.alto - 2 * MARGEN_MAXIMIZADA),
     };
     setCharts((actual) => actual.map((tarjeta) => {
       if (tarjeta.id === id) return alternarMaximizacion(tarjeta, areaVisible);
@@ -327,7 +343,7 @@ export default function Home() {
   };
 
   const ordenarLienzo = () => {
-    const anchoLienzo = lienzoRef.current?.clientWidth ?? 1200;
+    const anchoLienzo = medidasLienzo().ancho;
     setCharts((actual) => ordenarTarjetas(actual, anchoLienzo));
     setDesplazarA(0);
   };
@@ -335,6 +351,10 @@ export default function Home() {
   useEffect(() => {
     chartsRef.current = charts;
   }, [charts]);
+
+  useEffect(() => {
+    zoomRef.current = canvasZoom;
+  }, [canvasZoom]);
 
   // Escape restaura la tarjeta maximizada.
   useEffect(() => {
@@ -348,10 +368,11 @@ export default function Home() {
     return () => window.removeEventListener('keydown', alPresionarTecla);
   }, []);
 
-  // Lleva el lienzo hasta las tarjetas recién acomodadas, ya dibujadas.
+  // Lleva el lienzo hasta las tarjetas recién acomodadas, ya dibujadas (desplazarA está en
+  // coordenadas del lienzo; el desplazamiento en pantalla se multiplica por la escala).
   useEffect(() => {
     if (desplazarA === null) return;
-    lienzoRef.current?.scrollTo({ top: desplazarA, behavior: 'smooth' });
+    lienzoRef.current?.scrollTo({ top: desplazarA * zoomRef.current, behavior: 'smooth' });
     setDesplazarA(null);
   }, [desplazarA]);
 
@@ -378,8 +399,8 @@ export default function Home() {
 
   const continueInteraction = (event: PointerEvent<HTMLElement>) => {
     if (!pointerInteraction) return;
-    const deltaX = event.clientX - pointerInteraction.startX;
-    const deltaY = event.clientY - pointerInteraction.startY;
+    const deltaX = (event.clientX - pointerInteraction.startX) / canvasZoom;
+    const deltaY = (event.clientY - pointerInteraction.startY) / canvasZoom;
 
     setCharts((current) => current.map((chart) => {
       if (chart.id !== pointerInteraction.id) return chart;
@@ -418,13 +439,51 @@ export default function Home() {
     if (selectedChartId === id) setSelectedChartId(remaining.at(-1)?.id ?? null);
   };
 
-  const dashboardHeight = Math.max(620, ...charts.map((chart) => chart.y + chart.height + 32));
+  const updateCanvasZoom = (zoom: number) => {
+    setCanvasZoom(Math.min(2, Math.max(0.5, Number(zoom.toFixed(2)))));
+  };
+
+  const handleCanvasWheel = (event: WheelEvent<HTMLElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    updateCanvasZoom(canvasZoom * Math.exp(-event.deltaY * 0.002));
+  };
+
+  const dashboardHeight = Math.max(900, ...charts.map((chart) => chart.y + chart.height + 160));
 
   return (
     <main className={`h-screen min-h-[560px] overflow-hidden flex flex-col ${isDarkMode ? 'bg-[#090d14] text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       <header className={`h-14 shrink-0 flex items-center justify-between border-b px-5 ${isDarkMode ? 'border-slate-800 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
-        <div className={`text-lg font-bold tracking-[0.18em] ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>DARVIS</div>
+        <div className="flex items-baseline gap-2">
+          <div className={`text-lg font-bold tracking-[0.18em] ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>DARVIS</div>
+          <span className={`text-xs italic ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>by DataBrothers</span>
+        </div>
         <div className="flex items-center gap-2">
+          <div className={`flex h-8 items-center rounded-lg border ${isDarkMode ? 'border-slate-700 bg-[#111827]' : 'border-slate-200 bg-white'}`}>
+            <button
+              type="button"
+              onClick={() => updateCanvasZoom(canvasZoom - 0.1)}
+              disabled={canvasZoom <= 0.5}
+              className={`flex h-full w-8 items-center justify-center rounded-l-lg disabled:opacity-40 ${isDarkMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-label="Alejar lienzo"
+              title="Alejar lienzo"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className={`min-w-11 text-center text-[11px] tabular-nums ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} aria-live="polite">
+              {Math.round(canvasZoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => updateCanvasZoom(canvasZoom + 0.1)}
+              disabled={canvasZoom >= 2}
+              className={`flex h-full w-8 items-center justify-center rounded-r-lg disabled:opacity-40 ${isDarkMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-label="Acercar lienzo"
+              title="Acercar lienzo"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => setIsDarkMode((dark) => !dark)}
@@ -450,7 +509,11 @@ export default function Home() {
       </header>
 
       <div className="relative flex flex-1 min-h-0">
-        <section ref={lienzoRef} className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}>
+        <section
+          ref={lienzoRef}
+          onWheel={handleCanvasWheel}
+          className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}
+        >
           {errorMessage && (
             // Envoltura fija de alto cero: el aviso queda visible aunque el lienzo esté desplazado.
             <div className="sticky top-0 z-[2000] h-0">
@@ -473,7 +536,24 @@ export default function Home() {
               Los gráficos aparecerán aquí
             </div>
           )}
-          <div className="relative min-w-full min-h-full" style={{ height: dashboardHeight }}>
+          {/* Zoom: el contenedor externo ocupa el tamaño escalado (para las barras de desplazamiento) y el
+              interno se dibuja con transform: scale; las tarjetas guardan coordenadas sin escalar. */}
+          <div
+            className="relative min-h-full"
+            style={{
+              width: canvasZoom > 1 ? `${canvasZoom * 100}%` : '100%',
+              height: dashboardHeight * canvasZoom,
+            }}
+          >
+            <div
+              className="relative"
+              style={{
+                width: canvasZoom > 1 ? `${100 / canvasZoom}%` : '100%',
+                height: dashboardHeight,
+                transform: `scale(${canvasZoom})`,
+                transformOrigin: 'top left',
+              }}
+            >
             {charts.map((chart, index) => {
               const minimizada = chart.ventana === 'minimizada';
               const maximizada = chart.ventana === 'maximizada';
@@ -570,7 +650,7 @@ export default function Home() {
                       onPointerMove={continueInteraction}
                       onPointerUp={() => setPointerInteraction(null)}
                       onPointerCancel={() => setPointerInteraction(null)}
-                      className={`absolute bottom-0 right-0 z-20 h-4 w-4 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
+                      className={`absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
                       title="Arrastrar para cambiar el tamaño"
                       aria-label="Cambiar tamaño del gráfico"
                     />
@@ -578,6 +658,7 @@ export default function Home() {
                 </article>
               );
             })}
+            </div>
           </div>
         </section>
 
