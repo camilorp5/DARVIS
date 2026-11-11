@@ -7,9 +7,16 @@ import duckdb
 import os
 import json
 import re
+import sys
 from groq import Groq
 from dotenv import load_dotenv
 from caso_guia_paneles import PANELES, PANELES_GRAFICOS, SQL_INTERVALO, armar_kpis, buscar_panel
+
+# En Windows, si la salida va a un archivo o a una tubería, Python usa cp1252 y los emojis de los
+# print detienen el arranque; se fuerza UTF-8 en la salida.
+for _flujo in (sys.stdout, sys.stderr):
+    if hasattr(_flujo, "reconfigure"):
+        _flujo.reconfigure(encoding="utf-8", errors="replace")
 
 # 2. Cargar las variables del archivo .env a os.environ
 load_dotenv()
