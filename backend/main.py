@@ -8,6 +8,8 @@ import json
 import re
 from groq import Groq
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # 2. Cargar las variables del archivo .env a os.environ
 load_dotenv()
@@ -21,6 +23,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 con = duckdb.connect(database=':memory:')
 groq_client: Optional[Groq] = None

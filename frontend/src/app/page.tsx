@@ -1,10 +1,10 @@
 'use client';
 
-import { PointerEvent, useState } from 'react';
+import { PointerEvent, WheelEvent, useState } from 'react';
 import { getCasoGuia, sendChatPrompt } from '@/lib/api';
 import { ApiResponse } from '@/types';
 import DynamicChart from '@/components/visualization/DynamicChart';
-import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Trash2, Settings2, ChevronLeft, ChevronRight, Sun, Moon, Plus, Minus } from 'lucide-react';
 
 type DashboardChart = {
   id: string;
@@ -47,6 +47,7 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [canvasZoom, setCanvasZoom] = useState(1);
   const selectedChart = charts.find((chart) => chart.id === selectedChartId) ?? null;
   const selectedChartType = selectedChart?.response.chart_spec.chart_type;
   const canSetXBounds = selectedChartType === 'scatter' || selectedChartType === 'horizontal_bar';
@@ -107,8 +108,8 @@ export default function Home() {
 
   const continueInteraction = (event: PointerEvent<HTMLElement>) => {
     if (!pointerInteraction) return;
-    const deltaX = event.clientX - pointerInteraction.startX;
-    const deltaY = event.clientY - pointerInteraction.startY;
+    const deltaX = (event.clientX - pointerInteraction.startX) / canvasZoom;
+    const deltaY = (event.clientY - pointerInteraction.startY) / canvasZoom;
 
     setCharts((current) => current.map((chart) => {
       if (chart.id !== pointerInteraction.id) return chart;
@@ -147,13 +148,51 @@ export default function Home() {
     if (selectedChartId === id) setSelectedChartId(remaining.at(-1)?.id ?? null);
   };
 
-  const dashboardHeight = Math.max(620, ...charts.map((chart) => chart.y + chart.height + 32));
+  const updateCanvasZoom = (zoom: number) => {
+    setCanvasZoom(Math.min(2, Math.max(0.5, Number(zoom.toFixed(2)))));
+  };
+
+  const handleCanvasWheel = (event: WheelEvent<HTMLElement>) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    updateCanvasZoom(canvasZoom * Math.exp(-event.deltaY * 0.002));
+  };
+
+  const dashboardHeight = Math.max(900, ...charts.map((chart) => chart.y + chart.height + 160));
 
   return (
     <main className={`h-screen min-h-[560px] overflow-hidden flex flex-col ${isDarkMode ? 'bg-[#090d14] text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
       <header className={`h-14 shrink-0 flex items-center justify-between border-b px-5 ${isDarkMode ? 'border-slate-800 bg-[#0d121c]' : 'border-slate-200 bg-white'}`}>
-        <div className={`text-lg font-bold tracking-[0.18em] ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>DARVIS</div>
+        <div className="flex items-baseline gap-2">
+          <div className={`text-lg font-bold tracking-[0.18em] ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>DARVIS</div>
+          <span className={`text-xs italic ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>by DataBrothers</span>
+        </div>
         <div className="flex items-center gap-2">
+          <div className={`flex h-8 items-center rounded-lg border ${isDarkMode ? 'border-slate-700 bg-[#111827]' : 'border-slate-200 bg-white'}`}>
+            <button
+              type="button"
+              onClick={() => updateCanvasZoom(canvasZoom - 0.1)}
+              disabled={canvasZoom <= 0.5}
+              className={`flex h-full w-8 items-center justify-center rounded-l-lg disabled:opacity-40 ${isDarkMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-label="Alejar lienzo"
+              title="Alejar lienzo"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className={`min-w-11 text-center text-[11px] tabular-nums ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} aria-live="polite">
+              {Math.round(canvasZoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => updateCanvasZoom(canvasZoom + 0.1)}
+              disabled={canvasZoom >= 2}
+              className={`flex h-full w-8 items-center justify-center rounded-r-lg disabled:opacity-40 ${isDarkMode ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-50'}`}
+              aria-label="Acercar lienzo"
+              title="Acercar lienzo"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <button
             type="button"
             onClick={() => setIsDarkMode((dark) => !dark)}
@@ -179,7 +218,10 @@ export default function Home() {
       </header>
 
       <div className="flex flex-1 min-h-0">
-        <section className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}>
+        <section
+          onWheel={handleCanvasWheel}
+          className={`relative flex-1 min-w-0 overflow-auto ${isDarkMode ? 'bg-[#090d14]' : 'bg-slate-100/70'}`}
+        >
           {errorMessage && (
             <div className="absolute left-4 right-4 top-4 z-[2000] flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 shadow-sm">
               <AlertCircle className="h-5 w-5 shrink-0" />
@@ -191,43 +233,59 @@ export default function Home() {
               Los gráficos aparecerán aquí
             </div>
           )}
-          <div className="relative min-w-full min-h-full" style={{ height: dashboardHeight }}>
-            {charts.map((chart, index) => (
-              <article
-                key={chart.id}
-                onClick={() => setSelectedChartId(chart.id)}
-                className={`absolute rounded-2xl ${isDarkMode ? 'bg-[#111827]' : 'bg-white'} ${selectedChartId === chart.id ? 'ring-2 ring-blue-500 shadow-2xl' : 'shadow-lg'} overflow-hidden`}
-                style={{ left: chart.x, top: chart.y, width: chart.width, height: chart.height, zIndex: selectedChartId === chart.id ? charts.length + 1 : index + 1 }}
-              >
-                <button
-                  type="button"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => { event.stopPropagation(); deleteChart(chart.id); }}
-                  className={`absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm ${isDarkMode ? 'border-slate-700 bg-slate-900/95 text-red-300 hover:bg-slate-800' : 'border-red-100 bg-white/95 text-red-600 hover:bg-red-50'}`}
-                  title="Eliminar gráfico"
-                  aria-label="Eliminar gráfico"
+          <div
+            className="relative min-h-full"
+            style={{
+              width: canvasZoom > 1 ? `${canvasZoom * 100}%` : '100%',
+              height: dashboardHeight * canvasZoom,
+            }}
+          >
+            <div
+              className="relative"
+              style={{
+                width: canvasZoom > 1 ? `${100 / canvasZoom}%` : '100%',
+                height: dashboardHeight,
+                transform: `scale(${canvasZoom})`,
+                transformOrigin: 'top left',
+              }}
+            >
+              {charts.map((chart, index) => (
+                <article
+                  key={chart.id}
+                  onClick={() => setSelectedChartId(chart.id)}
+                  className={`absolute rounded-2xl ${isDarkMode ? 'bg-[#111827]' : 'bg-white'} ${selectedChartId === chart.id ? 'ring-2 ring-blue-500 shadow-2xl' : 'shadow-lg'} overflow-hidden`}
+                  style={{ left: chart.x, top: chart.y, width: chart.width, height: chart.height, zIndex: selectedChartId === chart.id ? charts.length + 1 : index + 1 }}
                 >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-                <DynamicChart
-                  response={chart.response}
-                  isDark={isDarkMode}
-                  compact={chart.width < 500 || chart.height < 400}
-                  onTitlePointerDown={(event) => startInteraction(event, chart, 'move')}
-                  onTitlePointerMove={continueInteraction}
-                  onTitlePointerUp={() => setPointerInteraction(null)}
-                />
-                <div
-                  onPointerDown={(event) => startInteraction(event, chart, 'resize')}
-                  onPointerMove={continueInteraction}
-                  onPointerUp={() => setPointerInteraction(null)}
-                  onPointerCancel={() => setPointerInteraction(null)}
-                  className={`absolute bottom-0 right-0 z-20 h-4 w-4 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
-                  title="Arrastrar para cambiar el tamaño"
-                  aria-label="Cambiar tamaño del gráfico"
-                />
-              </article>
-            ))}
+                  <button
+                    type="button"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => { event.stopPropagation(); deleteChart(chart.id); }}
+                    className={`absolute right-3 top-3 z-20 flex h-7 w-7 items-center justify-center rounded-lg border shadow-sm ${isDarkMode ? 'border-slate-700 bg-slate-900/95 text-red-300 hover:bg-slate-800' : 'border-red-100 bg-white/95 text-red-600 hover:bg-red-50'}`}
+                    title="Eliminar gráfico"
+                    aria-label="Eliminar gráfico"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                  <DynamicChart
+                    response={chart.response}
+                    isDark={isDarkMode}
+                    compact={chart.width < 500 || chart.height < 400}
+                    onTitlePointerDown={(event) => startInteraction(event, chart, 'move')}
+                    onTitlePointerMove={continueInteraction}
+                    onTitlePointerUp={() => setPointerInteraction(null)}
+                  />
+                  <div
+                    onPointerDown={(event) => startInteraction(event, chart, 'resize')}
+                    onPointerMove={continueInteraction}
+                    onPointerUp={() => setPointerInteraction(null)}
+                    onPointerCancel={() => setPointerInteraction(null)}
+                    className={`absolute bottom-0 right-0 z-20 h-3 w-3 cursor-nwse-resize touch-none rounded-tl-md ${isDarkMode ? 'bg-blue-400/90' : 'bg-blue-600/90'}`}
+                    title="Arrastrar para cambiar el tamaño"
+                    aria-label="Cambiar tamaño del gráfico"
+                  />
+                </article>
+              ))}
+            </div>
           </div>
         </section>
 
